@@ -12,7 +12,7 @@ package to read and parse the ZTF SN IDR dataset
  python setup.py install
  ```
 **AND**
-you need to have clone the (ZTF Interal datarelease)[https://github.com/ZwickyTransientFacility/ztfcosmoidr] (password protected).
+you need to have clone the [ZTF Interal datarelease](https://github.com/ZwickyTransientFacility/ztfcosmoidr) (password protected).
 
 # Usage
 
