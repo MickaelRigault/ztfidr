@@ -26,7 +26,7 @@ The summary table is accessible as `sample.data`, the spectra as `sample.spectra
 sample.data
 ```
 <p align="left">
-  <img src="images/example_data.png" width="700" title="data">
+  <img src="images/example_data.png" width="900" title="data">
 </p>
 
 
@@ -35,7 +35,7 @@ To visualise an in individual target (e.g. `ZTF19aampqcq`), do:
 _ = sample.show_target("ZTF19aampqcq")
 ```
 <p align="left">
-  <img src="images/example_show_target.png" width="700" title="show_target">
+  <img src="images/example_show_target.png" width="900" title="show_target">
 </p>
 The ticks on top of the lightcurve figure show the time where spectra have been taken, following the color coding of the spectral panel.
 
