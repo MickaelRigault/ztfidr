@@ -22,9 +22,10 @@ class LightCurve( object ):
         if use_dask:
             from dask import delayed
             # This is faster than dd.read_cvs and does what we need here
-            lc = delayed(pandas.read_csv)(filename, index_col=0)
+            lc = delayed(pandas.read_csv)(filename, delim_whitespace=True)
         else:
-            lc = pandas.read_csv(filename, index_col=0)
+            lc = pandas.read_csv(filename, delim_whitespace=True)
+            
         meta = pandas.Series([os.path.basename(filename).split("_")[0]], 
                              index=["name"])
         return cls(lc, meta=meta, use_dask=use_dask)
@@ -40,36 +41,40 @@ class LightCurve( object ):
         """ """
         self._meta = meta  
         
-    def get_lcdata(self, zp=25):
+    def get_lcdata(self, zp=None):
         """ """
         if zp is None:
-            zp = self.data["magzp"].values
+            zp = self.data["ZP"].values
             coef = 1.
         else:
-            coef = 10 ** (-(self.data["magzp"].values - zp) / 2.5)
+            coef = 10 ** (-(self.data["ZP"].values - zp) / 2.5)
             
-        flux  = self.data["ampl"] * coef
-        error = self.data["ampl.err"] * coef
+        flux  = self.data["flux"] * coef
+        error = self.data["flux_err"] * coef
         detection = flux/error
         
-        lcdata = self.data[["obsmjd", "filterid", "fieldid","target_x","target_y"]].copy()
+        lcdata = self.data[["mjd","mag","mag_err","filter","field_id","x_pos","y_pos","seeing", "flag","mag_lim"]].copy()
         lcdata["zp"] = zp
         lcdata["flux"] = flux
         lcdata["error"] = error
         lcdata["detection"] = detection
-        lcdata["filter"] = lcdata["filterid"].replace(1,"p48g").replace(2,"p48r").replace(3,"p48i")
+        lcdata["filter"] = lcdata["filter"].replace("ztfg","p48g").replace("ztfr","p48r").replace("ztfi","p48i")
         return lcdata
         
-    def show(self, ax=None, zp=25, formattime=True, zeroline=True, zprop={}, **kwargs):
+    def show(self, ax=None, zp=None, formattime=True, zeroline=True,
+                 zprop={}, inmag=False, ulength=0.1, ualpha=0.1, notplt=False, **kwargs):
         """ """
-        import matplotlib.pyplot as mpl
+        if notplt:
+            from matplotlib.figure import Figure
+        else:
+            from matplotlib.pyplot import figure as Figure
         from matplotlib import dates as mdates
         from astropy.time import Time
         
         self._compute()
         # - Axes Definition
         if ax is None:
-            fig = mpl.figure(figsize=[7,4])
+            fig = Figure(figsize=[7,4])
             ax = fig.add_axes([0.1,0.15,0.8,0.75])
         else:
             fig = ax.figure
@@ -89,23 +94,48 @@ class LightCurve( object ):
                 warnings.warn(f"WARNING: Unknown instrument: {band_} | magnitude not shown")
                 continue
             
-            bdata = lightcurves[lightcurves["filter"]==band_]
-            datatime = Time(bdata["obsmjd"], format="mjd").datetime
-            y, dy = bdata["flux"], bdata["error"]
-            ax.errorbar(datatime,
-                         y,  yerr= dy, 
-                         label=band_, 
-                         **{**base_prop, **ZTFCOLOR[band_],**kwargs}
-                       )
+            
+            if not inmag:
+                bdata = lightcurves[lightcurves["filter"]==band_]
+                datatime = Time(bdata["mjd"], format="mjd").datetime
+                y, dy = bdata["flux"], bdata["error"]
+                ax.errorbar(datatime,
+                                y,  yerr= dy, 
+                                label=band_, 
+                                **{**base_prop, **ZTFCOLOR[band_],**kwargs}
+                                )
+            else:
+                bdata = lightcurves[(lightcurves["filter"]==band_) & (lightcurves["mag"]<99)]
+                datatime = Time(bdata["mjd"], format="mjd").datetime
+                y, dy = bdata["mag"], bdata["mag_err"]
+                ax.errorbar(datatime,
+                                y,  yerr= dy, 
+                                label=band_, 
+                                **{**base_prop, **ZTFCOLOR[band_],**kwargs}
+                                )
+        if inmag:
+            ax.invert_yaxis()
+            for band_ in bands:
+                bdata = lightcurves[(lightcurves["filter"]==band_) & (lightcurves["mag"]>=99)]
+                datatime = Time(bdata["mjd"], format="mjd").datetime
+                y = bdata["mag_lim"]
+                ax.errorbar(datatime, y,
+                                 yerr=ulength, lolims=True, alpha=ualpha,
+                                 color=ZTFCOLOR[band_]["mfc"], 
+                                 ls="None",  label="_no_legend_")
+                                 
+                                 
+                
         if formattime:
             locator = mdates.AutoDateLocator()
             formatter = mdates.ConciseDateFormatter(locator)
             ax.xaxis.set_major_locator(locator)
             ax.xaxis.set_major_formatter(formatter)
 
-        ax.set_ylabel(f"Flux [zp={zp}]" if zp is not None else "Flux []")
+        lunit = "flux" if not inmag else "mag"
+        ax.set_ylabel(f"{lunit} [zp={zp}]" if zp is not None else f"{lunit} []")
         if zeroline:
-            ax.axhline(0, **{**dict(color="0.7",ls="--",lw=1, zorder=1),**zprop} )
+            ax.axhline(0 if not inmag else 22, **{**dict(color="0.7",ls="--",lw=1, zorder=1),**zprop} )
             
         return fig
     
