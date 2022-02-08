@@ -1,6 +1,11 @@
 import numpy as np
 import os
 import pandas
+import warnings
+from . import io
+
+SPEC_DATAFILE = io.get_spectra_datafile()
+
 
 def read_spectrum(file_):
     """ """
@@ -23,29 +28,19 @@ def read_spectrum(file_):
         data["variance"] = variance[0]
     return header, data
 
-def parse_filename(file_):
-    """ """
-    file_ = os.path.basename(file_).split(".ascii")[0]
-    index = ["name", "date", "telescope", "instrument", "source", "origin"]
-    name, date, *telescope, instrument, source, origin = file_.split("_")
-    telescope = "_".join(telescope)
-    try:
-        return pandas.Series([name, date, telescope, instrument, source, origin],
-                             index=index)
-    except:
-        raise IOError(f"meta failed for {file_}")
 
 class Spectrum( object ):
     """ """
-    def __init__(self, data, header=None, meta=None, use_dask=False):
+    def __init__(self, data, header=None, meta=None, use_dask=False, snidresult=None):
         """ """
         self.set_data(data)
         self.set_header(header)
         self.set_meta(meta)
+        self.set_snidresult(snidresult)
         self._use_dask = use_dask
         
     @classmethod
-    def from_filename(cls, filename, use_dask=False):
+    def from_filename(cls, filename, use_dask=False, snidresult=None, **kwargs):
         """ """
         if not use_dask:
             header, data = read_spectrum(filename)
@@ -55,12 +50,40 @@ class Spectrum( object ):
             header = header_data[0]
             data = header_data[1]
             
-        meta = parse_filename(filename)
-        return cls(data, header=header, meta=meta, use_dask=use_dask)
-    
+        meta = io.parse_filename(filename)
+        this = cls(data, header=header, meta=meta, use_dask=use_dask,
+                       snidresult=snidresult, **kwargs)
+        this._filename = filename
+        return this
+
+    @classmethod
+    def from_name(cls, targetname, as_spectra=False, use_dask=False, **kwargs):
+        """ """        
+        fullpath = SPEC_DATAFILE[SPEC_DATAFILE["name"]==targetname]["fullpath"].values
+        if len(fullpath)==0:
+            warnings.warn(f"No spectra target names {targetname}")
+            return None
+        
+        if len(fullpath) == 1:
+            return cls.from_filename(fullpath[0], use_dask=use_dask, **kwargs)
+        elif as_spectra:
+            return Spectra.from_filenames(fullpath, use_dask=use_dask, **kwargs)
+        else:
+            return [cls.from_filename(file_, use_dask=use_dask, **kwargs)
+                        for file_ in fullpath]
+        
     # ================ #
     #    Method        #
     # ================ #
+    def load_snidresult(self, phase=None, redshift=None, **kwargs):
+        """ get and set """
+        snidresult = self.get_snidfit(phase=phase, redshift=redshift,
+                                       **kwargs)
+        self.set_snidresult( snidresult )
+        
+    # --------- #
+    #  SETTER   #
+    # --------- #
     def set_data(self, data):
         """ """
         self._data = data
@@ -72,7 +95,47 @@ class Spectrum( object ):
     def set_meta(self, meta):
         """ """
         self._meta = meta
+
+    def set_snidresult(self, snidresult):
+        """ """
+        self._snidresult = snidresult
         
+    # --------- #
+    #  GETTER   #
+    # --------- #
+    def get_obsdate(self):
+        """ """
+        from astropy.time import Time        
+        if "date" not in self.meta.index or self.meta["date"] is None:
+            warnings.warn("Unknown date for the given spectrum")
+            return None
+        
+        return Time(self.meta["date"])
+    
+    def get_phase(self, t0):
+        """ """
+        obsdate = self.get_obsdate()
+        if obsdate is None:
+            return None
+        
+        return obsdate.mjd-t0
+    
+    def get_snidfit(self, phase=None, redshift=None,
+                        delta_phase=5, delta_redshift=None,
+                        lbda_range=[4000, 8000], **kwargs):
+        """ """
+        import pysnid
+        if self.filename is None:
+            raise NotImplementedError("No filename stored (self.filename is None). No work around implemented")
+            
+        return pysnid.run_snid(self.filename, redshift=redshift, phase=phase,
+                                   delta_phase=delta_phase, delta_redshift=delta_redshift,
+                                   lbda_range=lbda_range, **kwargs)
+    
+    
+    # --------- #
+    # PLOTTER   #
+    # --------- #        
     def show(self, ax=None, savefile=None, color=None, ecolor=None, ealpha=0.2, 
              show_error=True, zeroline=True, zcolor="0.7", zls="--", 
              zprop={}, fillprop={}, normed=False, offset=None,
@@ -120,6 +183,15 @@ class Spectrum( object ):
             ax.legend(loc="best", frameon=False, fontsize="small")
             
         return fig
+
+
+    def show_snidresult(self, axes=None, savefile=None, label=None, **kwargs):
+        """ shortcut to self.snidresult.show() """
+        if self.snidresult is None:
+            raise AttributeError("snidres is not defined (None)")
+        
+        return self.snidresult.show(axes=axes, savefile=savefile, label=label, **kwargs)
+    
     # ------------ #
     #   Internal   #
     # ------------ #
@@ -151,6 +223,11 @@ class Spectrum( object ):
     def meta(self):
         """ """
         return self._meta
+
+    @property
+    def snidresult(self):
+        """ """
+        return self._snidresult
     
     # Derived
     @property
@@ -186,13 +263,19 @@ class Spectrum( object ):
             return None
         
         return np.sqrt(self.variance)
+
+    @property
+    def filename(self):
+        """ """
+        if not hasattr(self,"_filename"):
+            return None
+        return self._filename
     
 # =============== #
 #                 #
 #                 #
 #                 #
 # =============== #
-
 class Spectra( object ):
     """ Spectrum Collection """
     def __init__(self, spectra, use_dask=False):
@@ -304,3 +387,8 @@ class Spectra( object ):
     def spectra(self):
         """ """    
         return self._spectra
+
+    @property
+    def filenames(self):
+        """ """
+        return self.call_down("filename", isfunc=False)

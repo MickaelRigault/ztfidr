@@ -1,6 +1,9 @@
 import os
 import pandas
 import numpy as np
+import warnings
+from . import io
+
 
 ZTFCOLOR = { # ZTF
         "p48r":dict(marker="o",ms=7,  mfc="C3"),
@@ -8,12 +11,19 @@ ZTFCOLOR = { # ZTF
         "p48i":dict(marker="o",ms=7, mfc="C1")
 }
 
+# ================== #
+#                    #
+#   LIGHTCURVES      #
+#                    #
+# ================== #
+    
 class LightCurve( object ):
     """ """
-    def __init__(self, data, meta=None, use_dask=False):
+    def __init__(self, data, meta=None, salt2param=None, use_dask=False):
         """ """
         self.set_data(data)
         self.set_meta(meta)
+        self.set_salt2param(salt2param)
         self._use_dask = use_dask
         
     @classmethod
@@ -29,19 +39,58 @@ class LightCurve( object ):
         meta = pandas.Series([os.path.basename(filename).split("_")[0]], 
                              index=["name"])
         return cls(lc, meta=meta, use_dask=use_dask)
-    
+
+    @classmethod
+    def from_name(cls, targetname, use_dask=False, load_salt2param=True, **kwargs):
+        """ """
+        filename = io.get_target_lc(targetname)            
+        this = cls.from_filename(filename, use_dask=use_dask, **kwargs)
+        this._targetname = targetname
+        if load_salt2param:
+            this.load_salt2param()
+            
+        return this
     # ================ #
     #    Method        #
     # ================ #
+    # --------- #
+    #  LOADER   #
+    # --------- #
+    def load_salt2param(self):
+        """ """
+        targetname = self.targetname
+        if targetname is None:
+            warnings.warn("Unknown targetname (=None) ; use manually set_salt2param()")
+            return None
+        from .salt2 import get_target_salt2param
+        salt2param = get_target_salt2param(targetname)
+        self.set_salt2param(salt2param)
+    # --------- #
+    #  SETTER   #
+    # --------- #
     def set_data(self, data):
         """ """
         self._data = data
+
+    def set_salt2param(self, salt2param):
+        """ """
+        self._salt2param = salt2param
         
     def set_meta(self, meta):
         """ """
         self._meta = meta  
-        
-    def get_lcdata(self, zp=None):
+
+    # --------- #
+    #  GETTER   #
+    # --------- #
+    def get_saltmodel(self):
+        """ """
+        from .salt2 import get_saltmodel
+        return get_saltmodel(**self.salt2param.rename({"redshift":"z"}
+                                                     )[["z","t0","x0","x1","c"]].to_dict()
+                            )
+    
+    def get_lcdata(self, zp=None, in_mjdrange=None):
         """ """
         if zp is None:
             zp = self.data["ZP"].values
@@ -59,9 +108,13 @@ class LightCurve( object ):
         lcdata["error"] = error
         lcdata["detection"] = detection
         lcdata["filter"] = lcdata["filter"].replace("ztfg","p48g").replace("ztfr","p48r").replace("ztfi","p48i")
+        if in_mjdrange is not None:
+            lcdata = lcdata[lcdata["mjd"].between(*in_mjdrange)]
+            
         return lcdata
         
     def show(self, ax=None, zp=None, formattime=True, zeroline=True,
+                 incl_salt2=True, autoscale_salt=True,
                  zprop={}, inmag=False, ulength=0.1, ualpha=0.1, notplt=False, **kwargs):
         """ """
         if notplt:
@@ -85,9 +138,14 @@ class LightCurve( object ):
         base_prop = dict(ls="None", mec="0.9", mew=0.5, ecolor="0.7")
         lineprop = dict(color="0.7", zorder=1, lw=0.5)
         
-        lightcurves = self.get_lcdata(zp=zp)
-        bands = np.unique(lightcurves["filter"])
+        saltmodel = self.get_saltmodel() if incl_salt2 else None
+        modeltime = self.salt2param.t0 + np.linspace(-15,50,100)
+        t0 = self.salt2param.t0
+        timerange = [t0-30, t0+100]
+        lightcurves = self.get_lcdata(zp=zp, in_mjdrange=timerange)
         
+        bands = np.unique(lightcurves["filter"])
+
         # Loop over bands
         for band_ in bands:
             if band_ not in ZTFCOLOR:
@@ -104,6 +162,11 @@ class LightCurve( object ):
                                 label=band_, 
                                 **{**base_prop, **ZTFCOLOR[band_],**kwargs}
                                 )
+                if saltmodel is not None:
+                    ax.plot(Time(modeltime, format="mjd").datetime,
+                                saltmodel.bandflux(band_, modeltime, zp=self.flux_zp, zpsys="ab"),
+                                color=ZTFCOLOR[band_]["mfc"])
+                                
             else:
                 bdata = lightcurves[(lightcurves["filter"]==band_) & (lightcurves["mag"]<99)]
                 datatime = Time(bdata["mjd"], format="mjd").datetime
@@ -113,6 +176,10 @@ class LightCurve( object ):
                                 label=band_, 
                                 **{**base_prop, **ZTFCOLOR[band_],**kwargs}
                                 )
+                if saltmodel is not None:
+                    ax.plot(Time(modeltime, format="mjd").datetime,
+                                saltmodel.bandmag(band_, "ab",modeltime), color=ZTFCOLOR[band_]["mfc"])
+
         if inmag:
             ax.invert_yaxis()
             for band_ in bands:
@@ -136,7 +203,15 @@ class LightCurve( object ):
         ax.set_ylabel(f"{lunit} [zp={zp}]" if zp is not None else f"{lunit} []")
         if zeroline:
             ax.axhline(0 if not inmag else 22, **{**dict(color="0.7",ls="--",lw=1, zorder=1),**zprop} )
+
+        if not inmag:
+            max_data = np.percentile(lightcurves["flux"], 99.)
+            mean_error = np.nanmean(lightcurves["error"])
+            ax.set_ylim(-2*mean_error, max_data*1.15)
             
+        if autoscale_salt:
+            ax.set_xlim(*Time(timerange,format="mjd").datetime)
+                    
         return fig
     
     # ----------- #
@@ -156,7 +231,6 @@ class LightCurve( object ):
         else:
             self._data = self._data.compute()
     
-    
     # ================ #
     #   Properties     #
     # ================ #        
@@ -169,7 +243,39 @@ class LightCurve( object ):
     @property
     def meta(self):
         """ """
-        return self._meta        
+        return self._meta
+
+    @property
+    def targetname(self):
+        """ """
+        if not hasattr(self, "_targetname"):
+            if self.meta is not None:
+                return self.meta.get("name",None)
+            
+            return None
+        
+        return self._targetname
+    
+
+    def has_salt2param(self):
+        """" """
+        return self.salt2param is not None
+    
+    @property
+    def salt2param(self):
+        """ """
+        if not hasattr(self,"_salt2param"):
+            return None
+        return self._salt2param
+
+
+    @property
+    def flux_zp(self):
+        """ """
+        zp = self.data["ZP"]
+        if len(np.unique(zp)) == 1:
+            return float(zp[0])
+        return zp
     
 class LightCurveCollection( object ):
     

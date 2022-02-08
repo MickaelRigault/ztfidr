@@ -49,7 +49,8 @@ class Sample( object ):
                 raise AttributeError("Sample Instance not loaded from a directory, please provide the spectra directory")
             directory = os.path.join(self._directory,"lightcurves")
             
-        self._lightcurves = lightcurve.LightCurveCollection.from_directory(directory, use_dask=self._use_dask)
+        self._lightcurves = lightcurve.LightCurveCollection.from_directory(directory,
+                                                                           use_dask=self._use_dask)
         
     # -------- #
     #  GETTER  #
