@@ -1,6 +1,6 @@
 __version__ = "0.2.0"
 
-from .sample import Sample
+#from .sample import Sample
 
 #def load_idr(directory, load_spectra=True, load_lightcurves=True, use_dask=True):
 #    """ """
