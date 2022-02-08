@@ -77,8 +77,12 @@ class Target():
         """ """
         import matplotlib.pyplot as mpl
         fig = mpl.figure(figsize=[9,6])
-        if self.spectra.snidresult is None:
+        
+        if self.spectra is not None and self.spectra.snidresult is None:
             _ = self.get_snidresult()
+            phase = self.spectra.get_phase( self.salt2param["t0"] )
+        else:
+            phase = np.NaN
             
         # - Axes
         axs = fig.add_axes([0.1,0.6,0.6,0.65/2])
@@ -86,19 +90,26 @@ class Target():
         axlc = fig.add_axes([0.1,0.08,0.85,0.4])
 
         # - Labels
-        phase = self.spectra.get_phase( self.salt2param["t0"] )
         redshift = self.salt2param["redshift"]
         label=rf"{self.name} z={redshift:.3f} | $\Delta$t: {phase:+.1f}"
         
         # - Plotter
         lc = self.lightcurve.show(ax=axlc, 
                                   zprop=dict(ls="-", color="0.6",lw=0.5))
-        sp = self.spectra.show_snidresult(axes=[axs, axt], 
+        if self.spectra is not None:
+            sp = self.spectra.show_snidresult(axes=[axs, axt], 
                                           label=label, spiderkwargs=spiderkwargs)
-        
-        # - ObsLine
-        axlc.axvline(self.spectra.get_obsdate().datetime, 
+            # - ObsLine
+            axlc.axvline(self.spectra.get_obsdate().datetime, 
                      ls="--", color="0.7")
+        else:
+            axs.text(0.5,0.5, f"no Spectra \n {label}", transform=axs.transAxes,
+                         va="center", ha="center")
+            clearwhich = ["left","right","top"] # "bottom"
+            axs.set_yticks([])
+            axs.set_xticks([])            
+            [axs.spines[which].set_visible(False) for which in clearwhich]
+
         return fig
         
     # ================ #
