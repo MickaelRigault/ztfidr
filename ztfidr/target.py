@@ -7,7 +7,7 @@ from . import io
 
 TARGET_DATA = io.get_targets_data()
 
-
+COLORS = ["0.7", "tan", "lightsteelblue", "thistle", "darkseagreen"]
 
 class Target():
     """ """
@@ -22,7 +22,7 @@ class Target():
         """ """
         from . import lightcurve, spectroscopy
         lc = lightcurve.LightCurve.from_name(targetname)
-        spec = spectroscopy.Spectrum.from_name(targetname, as_spectra=True)
+        spec = spectroscopy.Spectrum.from_name(targetname, as_spectra=False)
         meta = TARGET_DATA.loc[targetname]
         this = cls(lc, spec, meta=meta)
         this._name = targetname
@@ -49,6 +49,10 @@ class Target():
     # -------- #
     def get_snidresult(self, redshift=None, zquality=2, set_it=True, **kwargs):
         """ """
+        if not self.has_spectra():
+            warnings.warn("No spectra loaded.")
+            return None
+        
         if redshift is None:
             z_, z_quality_ = self.get_redshift()
             if zquality is not None and \
@@ -56,12 +60,15 @@ class Target():
                z_quality_ in np.atleast_1d(zquality):
                 redshift = z_
             
-        phase = self.spectra.get_phase( self.salt2param["t0"] )
-        snidres = self.spectra.get_snidfit(phase=phase, redshift=redshift, **kwargs)
-        if set_it:
-            self.spectra.set_snidresult(snidres)
-            
-        return snidres
+        snidres = []
+        for spec_ in self.spectra:
+            phase = spec_.get_phase( self.salt2param["t0"] )
+            snidres_ = spec_.get_snidfit(phase=phase, redshift=redshift, **kwargs)
+            if set_it:
+                spec_.set_snidresult(snidres_)
+            snidres.append(snidres_)
+                
+        return snidres[0] if not self.has_multiple_spectra() else snidres
         
     # -------- #
     #  LOADER  #
@@ -73,42 +80,56 @@ class Target():
     # -------- #
     # PLOTTER  #
     # -------- #
-    def show(self, spiderkwargs={}):
+    def show(self, spiderkwargs={}, nbest=3):
         """ """
         import matplotlib.pyplot as mpl
-        fig = mpl.figure(figsize=[9,6])
-        
-        if self.spectra is not None and self.spectra.snidresult is None:
-            _ = self.get_snidresult()
-            phase = self.spectra.get_phase( self.salt2param["t0"] )
-        else:
-            phase = np.NaN
-            
-        # - Axes
-        axs = fig.add_axes([0.1,0.6,0.6,0.65/2])
-        axt = fig.add_axes([0.75,0.55,0.2,0.75/2], polar=True)
-        axlc = fig.add_axes([0.1,0.08,0.85,0.4])
+        n_speclines = np.max([1,self.nspectra])
+        fig = mpl.figure(figsize=[9,3+2.5*n_speclines])
 
-        # - Labels
-        redshift = self.salt2param["redshift"]
-        label=rf"{self.name} z={redshift:.3f} | $\Delta$t: {phase:+.1f}"
+        # - Axes
+        _lc_height = 0.4/np.sqrt(n_speclines)
+        _sp_height = 0.25/np.sqrt(n_speclines)
+        _spany = 0.04+0.08/np.sqrt(n_speclines)
+        _lc_spany = 0.02+0.08/np.sqrt(n_speclines)
+        _bottom_lc = 0.04+0.05/np.sqrt(n_speclines)
+        _top_lc = _bottom_lc+_lc_height
         
+        axlc = fig.add_axes([0.1, _bottom_lc, 0.85, _lc_height])
+        axes = []
+        for i in range(n_speclines):
+            axs = fig.add_axes([0.10, _top_lc+_lc_spany+i*(_spany+_sp_height), 0.6, _sp_height])
+            axt = fig.add_axes([0.75, _top_lc+_lc_spany+i*(_spany+_sp_height), 0.2, _sp_height*0.95], polar=True)
+            axes.append([axs, axt])
+        #
         # - Plotter
+        #
+        # LightCurves
         lc = self.lightcurve.show(ax=axlc, 
                                   zprop=dict(ls="-", color="0.6",lw=0.5))
-        if self.spectra is not None:
-            sp = self.spectra.show_snidresult(axes=[axs, axt], 
-                                          label=label, spiderkwargs=spiderkwargs)
-            # - ObsLine
-            axlc.axvline(self.spectra.get_obsdate().datetime, 
-                     ls="--", color="0.7")
-        else:
-            axs.text(0.5,0.5, f"no Spectra \n {label}", transform=axs.transAxes,
+        redshift = self.salt2param["redshift"]
+        # - No Spectra
+        if not self.has_spectra():
+            axs.text(0.5,0.5, f"no Spectra for {self.name}", 
+                         transform=axs.transAxes,
                          va="center", ha="center")
+            axs.set_yticks([]) ;axs.set_xticks([])
             clearwhich = ["left","right","top"] # "bottom"
-            axs.set_yticks([])
-            axs.set_xticks([])            
             [axs.spines[which].set_visible(False) for which in clearwhich]
+        # - Multiple spectra            
+        else:
+            for i,spec_ in enumerate(np.atleast_1d(self.spectra)[::-1]):
+                phase = spec_.get_phase( self.salt2param["t0"] )
+                label=rf"{self.name} z={redshift:.3f} | $\Delta$t: {phase:+.1f}"
+                sp = spec_.show_snidresult(axes=axes[i], nbest=nbest,
+                                          label=label, color_data=COLORS[i],
+                                          spiderkwargs=spiderkwargs)
+                # - ObsLine
+                axlc.axvline(spec_.get_obsdate().datetime, 
+                             ls="--", color=COLORS[i])
+                if i>0:
+                    axes[i][0].set_xlabel("")
+                else:
+                    axes[i][0].set_xlabel(axes[i][0].get_xlabel(), fontsize="small")
 
         return fig
         
@@ -124,6 +145,21 @@ class Target():
     def spectra(self):
         """ """
         return self._spectra
+    
+    def has_spectra(self):
+        """ """
+        return self.spectra is not None
+    
+    def has_multiple_spectra(self):
+        """ """
+        return self.nspectra>1
+    
+    @property
+    def nspectra(self):
+        """ """
+        if not self.has_spectra():
+            return 0
+        return len(np.atleast_1d(self.spectra))
     
     @property
     def meta(self):
@@ -141,3 +177,4 @@ class Target():
         if not hasattr(self, "_name"):
             return self.meta.name
         return self._name
+    
