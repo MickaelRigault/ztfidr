@@ -47,6 +47,11 @@ class Target():
     # -------- #
     #  GETTER  #
     # -------- #
+    def get_autotyping(self):
+        """ """
+        return np.squeeze([sn_.get_type()
+                            for sn_ in np.atleast_1d(self.get_snidresult())])
+    
     def get_snidresult(self, redshift=None, zquality=2, set_it=True, **kwargs):
         """ """
         if not self.has_spectra():
