@@ -31,17 +31,28 @@ def read_spectrum(file_):
 
 class Spectrum( object ):
     """ """
-    def __init__(self, data, header=None, meta=None, use_dask=False, snidresult=None):
+    def __init__(self, data, header=None, meta=None, use_dask=False, snidresult=None,
+                     filename=None, load_snidres=True):
         """ """
         self.set_data(data)
         self.set_header(header)
         self.set_meta(meta)
         self.set_snidresult(snidresult)
+        # - Dask
         self._use_dask = use_dask
+        # - Filename        
+        self._filename = filename
+        # - snid result
+        if load_snidres:
+            self.load_snidresult(allow_fit=False)
+
         
     @classmethod
-    def from_filename(cls, filename, use_dask=False, snidresult=None, **kwargs):
-        """ """
+    def from_filename(cls, filename, use_dask=False, snidresult=None,
+                          load_snidres=True, **kwargs):
+        """ 
+        load_snidres: fetch for snidresults and loads it if it exists.
+        """
         if not use_dask:
             header, data = read_spectrum(filename)
         else:
@@ -51,13 +62,13 @@ class Spectrum( object ):
             data = header_data[1]
             
         meta = io.parse_filename(filename)
-        this = cls(data, header=header, meta=meta, use_dask=use_dask,
-                       snidresult=snidresult, **kwargs)
-        this._filename = filename
-        return this
+        return cls(data, header=header, meta=meta, use_dask=use_dask,
+                   snidresult=snidresult, filename=filename,
+                   load_snidres=load_snidres, **kwargs)
 
     @classmethod
-    def from_name(cls, targetname, as_spectra=False, use_dask=False, **kwargs):
+    def from_name(cls, targetname, as_spectra=False, use_dask=False,
+                      load_snidres=True, **kwargs):
         """ """        
         fullpath = SPEC_DATAFILE[SPEC_DATAFILE["name"]==targetname]["fullpath"].values
         if len(fullpath)==0:
@@ -65,11 +76,14 @@ class Spectrum( object ):
             return None
         
         if len(fullpath) == 1:
-            return cls.from_filename(fullpath[0], use_dask=use_dask, **kwargs)
+            return cls.from_filename(fullpath[0], use_dask=use_dask, load_snidres=load_snidres,
+                                         **kwargs)
         elif as_spectra:
-            return Spectra.from_filenames(fullpath, use_dask=use_dask, **kwargs)
+            return Spectra.from_filenames(fullpath, use_dask=use_dask, load_snidres=load_snidres,
+                                         **kwargs)
         else:
-            return [cls.from_filename(file_, use_dask=use_dask, **kwargs)
+            return [cls.from_filename(file_, use_dask=use_dask, load_snidres=load_snidres,
+                                         **kwargs)
                         for file_ in fullpath]
         
     # ================ #
@@ -89,10 +103,14 @@ class Spectrum( object ):
         from pysnid.snid import SNIDReader
         return SNIDReader.from_filename(snidresult_file)
     
-    def load_snidresult(self, phase=None, redshift=None, force_fit=False, **kwargs):
+    def load_snidresult(self, phase=None, redshift=None,
+                            force_fit=False, allow_fit=True, **kwargs):
         """ get and set """
+        if force_fit:
+            allow_fit = True
+            
         snidresult = self.fetch_snidresult(warn_if_notexist=False)
-        if snidresult is None or force_fit:
+        if (snidresult is None or force_fit) and allow_fit:
             snidresult = self.get_snidfit(phase=phase, redshift=redshift,
                                        **kwargs)
         self.set_snidresult( snidresult )
