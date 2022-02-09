@@ -122,6 +122,7 @@ class Target():
         # - Multiple spectra            
         else:
             for i,spec_ in enumerate(np.atleast_1d(self.spectra)[::-1]):
+                    
                 phase = spec_.get_phase( self.salt2param["t0"] )
                 label=rf"{self.name} z={redshift:.3f} | $\Delta$t: {phase:+.1f}"
                 sp = spec_.show_snidresult(axes=axes[i], nbest=nbest,

@@ -184,11 +184,11 @@ class Spectrum( object ):
             
         return fig
 
-
     def show_snidresult(self, axes=None, savefile=None, label=None, **kwargs):
         """ shortcut to self.snidresult.show() """
         if self.snidresult is None:
-            raise AttributeError("snidres is not defined (None)")
+            warnings.warn("snidres is not defined (None)")
+            self.show(ax=axes[0])
         
         return self.snidresult.show(axes=axes, savefile=savefile, label=label, **kwargs)
     
