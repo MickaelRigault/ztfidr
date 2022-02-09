@@ -188,7 +188,7 @@ class Spectrum( object ):
         """ shortcut to self.snidresult.show() """
         if self.snidresult is None:
             warnings.warn("snidres is not defined (None)")
-            self.show(ax=axes[0])
+            return self.show(ax=axes[0])
         
         return self.snidresult.show(axes=axes, savefile=savefile, label=label, **kwargs)
     
