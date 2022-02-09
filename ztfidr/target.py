@@ -61,7 +61,7 @@ class Target():
                 redshift = z_
             
         snidres = []
-        for spec_ in self.spectra:
+        for spec_ in np.atleast_1d(self.spectra):
             phase = spec_.get_phase( self.salt2param["t0"] )
             if spec_.snidresult is None:
                 snidres_ = spec_.get_snidfit(phase=phase, redshift=redshift, **kwargs)
