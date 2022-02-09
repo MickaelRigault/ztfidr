@@ -63,9 +63,13 @@ class Target():
         snidres = []
         for spec_ in self.spectra:
             phase = spec_.get_phase( self.salt2param["t0"] )
-            snidres_ = spec_.get_snidfit(phase=phase, redshift=redshift, **kwargs)
-            if set_it:
-                spec_.set_snidresult(snidres_)
+            if spec_.snidresult is None:
+                snidres_ = spec_.get_snidfit(phase=phase, redshift=redshift, **kwargs)
+                if set_it:
+                    spec_.set_snidresult(snidres_)
+            else:
+                snidres_ = spec_.snidresult
+                
             snidres.append(snidres_)
                 
         return snidres[0] if not self.has_multiple_spectra() else snidres
@@ -85,7 +89,7 @@ class Target():
         import matplotlib.pyplot as mpl
         n_speclines = np.max([1,self.nspectra])
         fig = mpl.figure(figsize=[9,3+2.5*n_speclines])
-
+        _ = self.get_snidresult()
         # - Axes
         _lc_height = 0.4/np.sqrt(n_speclines)
         _sp_height = 0.25/np.sqrt(n_speclines)
