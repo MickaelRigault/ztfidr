@@ -77,10 +77,10 @@ class Spectrum( object ):
     # ================ #
     def fetch_snidresult(self, warn_if_notexist=True):
         """ """
-        if self.spectrum.filename is None:
+        if self.filename is None:
             raise AttributeError("Unknown filename for the given spectrum. Cannot fetch the corresponding snidresult")
 
-        snidresult_file = self.spectrum.filename.replace(".ascii","_snid.h5")
+        snidresult_file = self.filename.replace(".ascii","_snid.h5")
         if not os.path.isfile(snidresult_file):
             if warn_if_notexist:
                 warnings.warn(f"snidres file does not exists {snidresult_file}")
