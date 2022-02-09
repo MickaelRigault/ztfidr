@@ -1,5 +1,6 @@
 
 # Loads the ztf filters inside sncosmo
+import warnings
 from ztfquery import filters
 filters.load_p48_filters_to_sncosmo(basename="p48") # p48g etc.
 

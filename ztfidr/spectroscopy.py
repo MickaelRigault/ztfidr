@@ -75,9 +75,25 @@ class Spectrum( object ):
     # ================ #
     #    Method        #
     # ================ #
-    def load_snidresult(self, phase=None, redshift=None, **kwargs):
+    def fetch_snidresult(self, warn_if_notexist=True):
+        """ """
+        if self.spectrum.filename is None:
+            raise AttributeError("Unknown filename for the given spectrum. Cannot fetch the corresponding snidresult")
+
+        snidresult_file = self.spectrum.filename.replace(".ascii","_snid.h5")
+        if not os.path.isfile(snidresult_file):
+            if warn_if_notexist:
+                warnings.warn(f"snidres file does not exists {snidresult_file}")
+            return None
+        
+        from pysnid.snid import SNIDReader
+        return SNIDReader.from_filename(snidresult_file)
+    
+    def load_snidresult(self, phase=None, redshift=None, force_fit=False, **kwargs):
         """ get and set """
-        snidresult = self.get_snidfit(phase=phase, redshift=redshift,
+        snidresult = self.fetch_snidresult(warn_if_notexist=False)
+        if snidresult is None or force_fit:
+            snidresult = self.get_snidfit(phase=phase, redshift=redshift,
                                        **kwargs)
         self.set_snidresult( snidresult )
         
