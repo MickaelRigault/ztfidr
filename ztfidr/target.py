@@ -102,13 +102,13 @@ class Target():
         fig = mpl.figure(figsize=[9,3+2.5*n_speclines])
         _ = self.get_snidresult()
         # - Axes
-        _lc_height = 0.4/np.sqrt(n_speclines)
-        _sp_height = 0.25/np.sqrt(n_speclines)
+        _lc_height = 0.25/np.sqrt(n_speclines)
+        _sp_height = 0.01+0.4/n_speclines
         _spany = 0.04+0.08/np.sqrt(n_speclines)
-        _lc_spany = 0.02+0.08/np.sqrt(n_speclines)
+        _lc_spany = 0.02+0.1/np.sqrt(n_speclines)
         _bottom_lc = 0.04+0.05/np.sqrt(n_speclines)
         _top_lc = _bottom_lc+_lc_height
-        
+
         axlc = fig.add_axes([0.1, _bottom_lc, 0.85, _lc_height])
         axes = []
         for i in range(n_speclines):
@@ -134,8 +134,8 @@ class Target():
         # - Multiple spectra            
         else:
             for i,spec_ in enumerate(np.atleast_1d(self.spectra)[::-1]):
-                phase = spec_.get_phase( self.salt2param["t0"] )
-                
+                phase = spec_.get_phase( self.salt2param["t0"], z=redshift)
+
                 label=rf"{self.name} z={redshift:.3f} ({redshift_label}) | $\Delta$t: {phase:+.1f}"
                 sp = spec_.show_snidresult(axes=axes[i], nbest=nbest,
                                           label=label, color_data=COLORS[i],
@@ -150,9 +150,10 @@ class Target():
 
                 if lines is not None:
                     for line, lbda in lines.items():
-                        axes[i][0].axvline(lbda*(1+redshift), ls=":",
-                                           color=line_color, zorder=1, lw=1, alpha=0.8)
-            
+                        for lbda_ in np.atleast_1d(lbda):
+                            axes[i][0].axvline(lbda_*(1+redshift), ls="--",
+                                           color=line_color, zorder=1, lw=0.5, alpha=0.8)
+
         return fig
         
     # ================ #
