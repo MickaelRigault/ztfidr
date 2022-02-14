@@ -109,11 +109,11 @@ class Target():
         _bottom_lc = 0.04+0.05/np.sqrt(n_speclines)
         _top_lc = _bottom_lc+_lc_height
 
-        axlc = fig.add_axes([0.12, _bottom_lc, 0.82, _lc_height])
+        axlc = fig.add_axes([0.15, _bottom_lc, 0.78, _lc_height])
         axes = []
         for i in range(n_speclines):
-            axs = fig.add_axes([0.12, _top_lc+_lc_spany+i*(_spany+_sp_height), 0.6, _sp_height])
-            axt = fig.add_axes([0.75, _top_lc+_lc_spany+i*(_spany+_sp_height), 0.2, _sp_height*0.72], polar=True)
+            axs = fig.add_axes([0.15, _top_lc+_lc_spany+i*(_spany+_sp_height), 0.55, _sp_height])
+            axt = fig.add_axes([0.75, _top_lc+_lc_spany+i*(_spany+_sp_height), 0.2, _sp_height*0.8], polar=True)
             axes.append([axs, axt])
         #
         # - Plotter
