@@ -121,7 +121,7 @@ class Target():
         # LightCurves
         lc = self.lightcurve.show(ax=axlc, 
                                   zprop=dict(ls="-", color="0.6",lw=0.5))
-        redshift, redshift_source = self.get_redshif()
+        redshift, redshift_source = self.get_redshift()
         redshift_label = REDSHIFT_LABEL[int(redshift_source)]
         # - No Spectra
         if not self.has_spectra():
