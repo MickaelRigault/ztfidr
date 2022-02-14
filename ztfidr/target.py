@@ -7,7 +7,7 @@ from . import io
 
 TARGET_DATA = io.get_targets_data()
 
-COLORS = ["0.7", "tan", "lightsteelblue", "thistle", "darkseagreen"]
+COLORS = ["0.6"]*10 # , "tan", "lightsteelblue", "thistle", "darkseagreen"]
 
 
 REDSHIFT_LABEL = {2:'host',
@@ -99,21 +99,21 @@ class Target():
         """ """
         import matplotlib.pyplot as mpl
         n_speclines = np.max([1,self.nspectra])
-        fig = mpl.figure(figsize=[9,3+2.5*n_speclines])
+        fig = mpl.figure(figsize=[7.2,3+2.5*n_speclines])
         _ = self.get_snidresult()
         # - Axes
         _lc_height = 0.25/np.sqrt(n_speclines)
-        _sp_height = 0.01+0.4/n_speclines
+        _sp_height = 0.01+0.40/n_speclines
         _spany = 0.04+0.08/np.sqrt(n_speclines)
-        _lc_spany = 0.02+0.1/np.sqrt(n_speclines)
+        _lc_spany = 0.03+0.11/np.sqrt(n_speclines)
         _bottom_lc = 0.04+0.05/np.sqrt(n_speclines)
         _top_lc = _bottom_lc+_lc_height
 
-        axlc = fig.add_axes([0.1, _bottom_lc, 0.85, _lc_height])
+        axlc = fig.add_axes([0.12, _bottom_lc, 0.82, _lc_height])
         axes = []
         for i in range(n_speclines):
-            axs = fig.add_axes([0.10, _top_lc+_lc_spany+i*(_spany+_sp_height), 0.6, _sp_height])
-            axt = fig.add_axes([0.75, _top_lc+_lc_spany+i*(_spany+_sp_height), 0.2, _sp_height*0.95], polar=True)
+            axs = fig.add_axes([0.12, _top_lc+_lc_spany+i*(_spany+_sp_height), 0.6, _sp_height])
+            axt = fig.add_axes([0.75, _top_lc+_lc_spany+i*(_spany+_sp_height), 0.2, _sp_height*0.72], polar=True)
             axes.append([axs, axt])
         #
         # - Plotter
@@ -146,7 +146,7 @@ class Target():
                 if i>0:
                     axes[i][0].set_xlabel("")
                 else:
-                    axes[i][0].set_xlabel(axes[i][0].get_xlabel(), fontsize="small")
+                    axes[i][0].set_xlabel(axes[i][0].get_xlabel(), fontsize="medium")
 
                 if lines is not None:
                     for line, lbda in lines.items():
@@ -155,7 +155,6 @@ class Target():
                                            color=line_color, zorder=1, lw=0.5, alpha=0.8)
 
         return fig
-        
     # ================ #
     #    Properties    #
     # ================ #
