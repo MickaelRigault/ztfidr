@@ -9,6 +9,11 @@ TARGET_DATA = io.get_targets_data()
 
 COLORS = ["0.7", "tan", "lightsteelblue", "thistle", "darkseagreen"]
 
+
+REDSHIFT_LABEL = {2:'host',
+                  1:"sn",
+                  0:"unknown"}
+
 class Target():
     """ """
     def __init__(self, lightcurve, spectra, meta=None):
@@ -89,7 +94,8 @@ class Target():
     # -------- #
     # PLOTTER  #
     # -------- #
-    def show(self, spiderkwargs={}, nbest=3):
+    def show(self, spiderkwargs={}, nbest=3, lines={"Ha":6563},
+                 line_color="0.6"):
         """ """
         import matplotlib.pyplot as mpl
         n_speclines = np.max([1,self.nspectra])
@@ -115,7 +121,8 @@ class Target():
         # LightCurves
         lc = self.lightcurve.show(ax=axlc, 
                                   zprop=dict(ls="-", color="0.6",lw=0.5))
-        redshift = self.salt2param["redshift"]
+        redshift, redshift_source = self.get_redshif()
+        redshift_label = REDSHIFT_LABEL[int(redshift_source)]
         # - No Spectra
         if not self.has_spectra():
             axs.text(0.5,0.5, f"no Spectra for {self.name}", 
@@ -127,9 +134,9 @@ class Target():
         # - Multiple spectra            
         else:
             for i,spec_ in enumerate(np.atleast_1d(self.spectra)[::-1]):
-                    
                 phase = spec_.get_phase( self.salt2param["t0"] )
-                label=rf"{self.name} z={redshift:.3f} | $\Delta$t: {phase:+.1f}"
+                
+                label=rf"{self.name} z={redshift:.3f} ({redshift_label}) | $\Delta$t: {phase:+.1f}"
                 sp = spec_.show_snidresult(axes=axes[i], nbest=nbest,
                                           label=label, color_data=COLORS[i],
                                           spiderkwargs=spiderkwargs)
@@ -141,6 +148,11 @@ class Target():
                 else:
                     axes[i][0].set_xlabel(axes[i][0].get_xlabel(), fontsize="small")
 
+                if lines is not None:
+                    for line, lbda in lines.items():
+                        axes[i][0].axvline(lbda*(1+redshift), ls=":",
+                                           color=line_color, zorder=1, lw=1, alpha=0.8)
+            
         return fig
         
     # ================ #

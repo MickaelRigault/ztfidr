@@ -50,7 +50,7 @@ class Sample( object ):
             directory = os.path.join(self._directory,"lightcurves")
             
         self._lightcurves = lightcurve.LightCurveCollection.from_directory(directory,
-                                                                           use_dask=self._use_dask)
+                                                                            use_dask=self._use_dask)
         
     # -------- #
     #  GETTER  #
