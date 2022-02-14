@@ -146,13 +146,15 @@ class Spectrum( object ):
         
         return Time(self.meta["date"])
     
-    def get_phase(self, t0):
+    def get_phase(self, t0, z=None):
         """ """
         obsdate = self.get_obsdate()
         if obsdate is None:
             return None
-        
-        return obsdate.mjd-t0
+        phase = obsdate.mjd-t0
+        if z is not None:
+            phase /=(1+z)
+        return phase
     
     def get_snidfit(self, phase=None, redshift=None,
                         delta_phase=5, delta_redshift=None,
