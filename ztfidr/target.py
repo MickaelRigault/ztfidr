@@ -55,7 +55,10 @@ class Target():
     def get_autotyping(self):
         """ """
         return np.squeeze([sn_.get_type()
-                            for sn_ in np.atleast_1d(self.get_snidresult())])
+                            for sn_ in
+                               np.atleast_1d(self.get_snidresult())
+                               if sn_ is not None
+                               ])
     
     def get_snidresult(self, redshift=None, zquality=2, set_it=True, **kwargs):
         """ """
