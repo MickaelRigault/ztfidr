@@ -54,6 +54,10 @@ class Target():
     # -------- #
     def get_autotyping(self, full_output=True, remove_fullna=True, allow_snidrun=True):
         """ """
+        notyping = pandas.Series([np.NaN]*4, index=['type', 'subtype', 'p(type)', 'p(subtype|type)'])
+        if self.nspectra == 0:
+            return notyping
+                
         types = np.asarray([sn_.get_type() if sn_ is not None else ((np.NaN,np.NaN),(np.NaN, np.NaN))
                             for sn_ in np.atleast_1d(self.get_snidresult(allow_run=allow_snidrun))
                             ]).T
@@ -72,7 +76,7 @@ class Target():
 
         df_types = df_types.drop_duplicates()
 
-        notyping = pandas.Series([np.NaN]*4, index=['type', 'subtype', 'p(type)', 'p(subtype|type)'])
+
         if len(df_types)==0:
             return notyping
 
