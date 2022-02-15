@@ -52,13 +52,52 @@ class Target():
     # -------- #
     #  GETTER  #
     # -------- #
-    def get_autotyping(self):
+    def get_autotyping(self, full_output=True, remove_fullna=True):
         """ """
-        return np.squeeze([sn_.get_type()
-                            for sn_ in
-                               np.atleast_1d(self.get_snidresult())
-                               if sn_ is not None
-                               ])
+        types = np.asarray([sn_.get_type() if sn_ is not None else ((np.NaN,np.NaN),(np.NaN, np.NaN))
+                            for sn_ in np.atleast_1d(self.get_snidresult())
+                            ]).T
+        
+        phases = [np.round(spec_.get_phase(self.salt2param['t0']), 1) for spec_ in np.atleast_1d(self.spectra)]
+        df_types = pandas.DataFrame(np.concatenate(types,axis=0).T,
+                    columns=["type","subtype","p(type)","p(subtype|type)"], 
+                    index=pandas.Series(phases, name="phase")).replace({"unclear":np.NaN,"nan":np.NaN})
+
+        
+        if remove_fullna:
+            df_types = df_types[~df_types.isna().all(axis=1)]
+
+        if full_output:
+            return df_types
+
+        df_types = df_types.drop_duplicates()
+
+        notyping = pandas.Series([np.NaN]*4, index=['type', 'subtype', 'p(type)', 'p(subtype|type)'])
+        if len(df_types)==0:
+            return notyping
+
+        if len(df_types)==1:
+            return df_types.iloc[0]
+
+        types = df_types["type"].unique()
+        if len(types)==1:
+            typing = {"type":types[0], "p(type)":df_types["p(type)"].astype(float).max()}
+            subtypes = df_types["subtype"].unique()
+            if len(subtypes) == 1:
+                typing["subtype"] = subtypes[0]
+                typing["p(subtype|type)"] = df_types["p(subtype|type)"].astype(float).max()
+            else:
+                typing["subtype"] = "unclear"
+                typing["p(subtype|type)"] = np.NaN
+
+        else:
+            typing = {"type":"unclear",
+                      "p(type)":np.NaN,
+                      "subtype": "unclear",
+                      "p(subtype|type)":np.NaN
+                     }
+        return pandas.Series(typing)[['type', 'subtype', 'p(type)', 'p(subtype|type)']]
+        return df_types
     
     def get_snidresult(self, redshift=None, zquality=2, set_it=True, **kwargs):
         """ """
