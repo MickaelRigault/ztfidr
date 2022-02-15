@@ -52,10 +52,10 @@ class Target():
     # -------- #
     #  GETTER  #
     # -------- #
-    def get_autotyping(self, full_output=True, remove_fullna=True):
+    def get_autotyping(self, full_output=True, remove_fullna=True, allow_snidrun=True):
         """ """
         types = np.asarray([sn_.get_type() if sn_ is not None else ((np.NaN,np.NaN),(np.NaN, np.NaN))
-                            for sn_ in np.atleast_1d(self.get_snidresult())
+                            for sn_ in np.atleast_1d(self.get_snidresult(allow_run=allow_snidrun))
                             ]).T
         
         phases = [np.round(spec_.get_phase(self.salt2param['t0']), 1) for spec_ in np.atleast_1d(self.spectra)]
@@ -99,11 +99,14 @@ class Target():
         return pandas.Series(typing)[['type', 'subtype', 'p(type)', 'p(subtype|type)']]
         return df_types
     
-    def get_snidresult(self, redshift=None, zquality=2, set_it=True, **kwargs):
+    def get_snidresult(self, redshift=None, zquality=2, set_it=True, allow_run=True, **kwargs):
         """ """
         if not self.has_spectra():
             warnings.warn("No spectra loaded.")
             return None
+        if not allow_run:
+            snidres = [spec_.snidresult for spec_ in np.atleast_1d(self.spectra)]
+            return snidres[0] if not self.has_multiple_spectra() else snidres
         
         if redshift is None:
             z_, z_quality_ = self.get_redshift()
@@ -137,12 +140,12 @@ class Target():
     # PLOTTER  #
     # -------- #
     def show(self, spiderkwargs={}, nbest=3, lines={"Ha":6563},
-                 line_color="0.6"):
+                 line_color="0.6", allow_snidrun=False):
         """ """
         import matplotlib.pyplot as mpl
         n_speclines = np.max([1,self.nspectra])
         fig = mpl.figure(figsize=[7.2,3+2.5*n_speclines])
-        _ = self.get_snidresult()
+        _ = self.get_snidresult(allow_run=allow_snidrun)
         # - Axes
         _lc_height = 0.25/np.sqrt(n_speclines)
         _sp_height = 0.01+0.40/n_speclines
