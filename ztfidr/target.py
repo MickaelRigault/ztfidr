@@ -149,6 +149,7 @@ class Target():
         import matplotlib.pyplot as mpl
         n_speclines = np.max([1,self.nspectra])
         fig = mpl.figure(figsize=[7.2,3+2.5*n_speclines])
+        
         _ = self.get_snidresult(allow_run=allow_snidrun)
         # - Axes
         _lc_height = 0.25/np.sqrt(n_speclines)

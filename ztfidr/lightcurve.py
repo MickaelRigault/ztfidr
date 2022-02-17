@@ -113,21 +113,18 @@ class LightCurve( object ):
             
         return lcdata
         
-    def show(self, ax=None, zp=None, formattime=True, zeroline=True,
-                 incl_salt2=True, autoscale_salt=True,
+    def show(self, ax=None, figsize=None, zp=None, formattime=True, zeroline=True,
+                 incl_salt2=True, autoscale_salt=True, clear_yticks=True,
                  zprop={}, inmag=False, ulength=0.1, ualpha=0.1, notplt=False, **kwargs):
         """ """
-        if notplt:
-            from matplotlib.figure import Figure
-        else:
-            from matplotlib.pyplot import figure as Figure
         from matplotlib import dates as mdates
         from astropy.time import Time
         
         self._compute()
         # - Axes Definition
         if ax is None:
-            fig = Figure(figsize=[7,4])
+            import matplotlib.pyplot as mpl
+            fig = mpl.figure(figsize=[7,4] if figsize is None else figsize)
             ax = fig.add_axes([0.1,0.15,0.8,0.75])
         else:
             fig = ax.figure
@@ -208,6 +205,8 @@ class LightCurve( object ):
             max_data = np.percentile(lightcurves["flux"], 99.)
             mean_error = np.nanmean(lightcurves["error"])
             ax.set_ylim(-2*mean_error, max_data*1.15)
+            if clear_yticks:
+                ax.set_yticklabels(["" for _ in ax.get_yticklabels()])
             
         if autoscale_salt:
             ax.set_xlim(*Time(timerange,format="mjd").datetime)

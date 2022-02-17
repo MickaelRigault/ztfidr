@@ -27,8 +27,20 @@ def get_targets_data(merge_how="outer"):
                           right_index=True, suffixes=("","_rt"),
                           how=merge_how)
     dd.pop("host_ra_rt"); dd.pop("host_dec_rt")
+    autotyping = get_autotyping()
+    dd = pandas.merge(dd, autotyping, left_index=True,
+                          right_index=True, suffixes=("","_rt"),
+                          how=merge_how)
+    
     return dd
 
+def get_autotyping(load=True, index_col=0, **kwargs):
+    """ """
+    filepath =  os.path.join(IDR_PATH,"tables",
+                             "autotyping.csv")
+    if not load:
+        return filepath
+    return pandas.read_csv(filepath, index_col=index_col, **kwargs)
 def get_redshif_data(load=True, index_col=0, **kwargs):
     """ """
     filepath =  os.path.join(IDR_PATH,"tables",

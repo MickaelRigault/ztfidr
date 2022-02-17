@@ -182,9 +182,10 @@ class Spectrum( object ):
             use: label='_meta_' to see meta content.
             
         """
-        from matplotlib.figure import Figure
+
         if ax is None:
-            fig = Figure(figsize=[6,4])
+            import matplotlib.pyplot as mpl
+            fig = mpl.figure(figsize=[6,4])
             ax = fig.add_axes([0.12,0.15,0.78,0.75])
         else:
             fig = ax.figure
@@ -371,9 +372,9 @@ class Spectra( object ):
         
     def show(self, ax=None, sortby="date", topfirst=True, legendprop={}, **kwargs):
         """ """
-        from matplotlib.figure import Figure
         if ax is None:
-            fig = Figure(figsize=[7,4])
+            import matplotlib.pyplot as mpl
+            fig = mpl.figure(figsize=[7,4])
             ax = fig.add_axes([0.12,0.15,0.78,0.75])
         else:
             fig = ax.figure
