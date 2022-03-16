@@ -37,6 +37,9 @@ def get_target_salt2param(targetname):
 def get_saltmodel(**params):
     """ """
     import sncosmo
-    model =  sncosmo.Model("salt2")
+    dust  = sncosmo.CCM89Dust()
+    model = sncosmo.Model("salt2", effects=[dust],
+                              effect_names=['mw'],
+                              effect_frames=['obs'])
     model.set(**params)
     return model

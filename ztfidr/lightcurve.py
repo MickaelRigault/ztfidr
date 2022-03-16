@@ -11,6 +11,12 @@ ZTFCOLOR = { # ZTF
         "p48i":dict(marker="o",ms=7, mfc="C1")
 }
 
+BAD_ZTFCOLOR = { # ZTF
+        "p48r":dict(marker="o",ms=6,  mfc="None", mec="C3"),
+        "p48g":dict(marker="o",ms=6,  mfc="None", mec="C2"),
+        "p48i":dict(marker="o",ms=6,  mfc="None", mec="C1")
+}
+
 # ================== #
 #                    #
 #   LIGHTCURVES      #
@@ -32,9 +38,9 @@ class LightCurve( object ):
         if use_dask:
             from dask import delayed
             # This is faster than dd.read_cvs and does what we need here
-            lc = delayed(pandas.read_csv)(filename, delim_whitespace=True)
+            lc = delayed(pandas.read_csv)(filename,  delim_whitespace=True, comment='#')
         else:
-            lc = pandas.read_csv(filename, delim_whitespace=True)
+            lc = pandas.read_csv(filename,  delim_whitespace=True, comment='#')
             
         meta = pandas.Series([os.path.basename(filename).split("_")[0]], 
                              index=["name"])
@@ -83,14 +89,26 @@ class LightCurve( object ):
     # --------- #
     #  GETTER   #
     # --------- #
+    def get_obsphase(self, min_detection=5, groupby=None, **kwargs):
+        """ 
+        Returns
+        -------
+        pandas.Series 
+        """
+        lcdata = self.get_lcdata(min_detection=min_detection, **kwargs)
+        if groupby is None:
+            return lcdata["phase"]
+        
+        return lcdata.groupby(groupby)["phase"].apply( list )
+        
     def get_saltmodel(self):
         """ """
         from .salt2 import get_saltmodel
         return get_saltmodel(**self.salt2param.rename({"redshift":"z"}
-                                                     )[["z","t0","x0","x1","c"]].to_dict()
+                                                     )[["z","t0","x0","x1","c",
+                                                        "mwebv"]].to_dict()
                             )
-    
-    def get_lcdata(self, zp=None, in_mjdrange=None):
+    def get_lcdata(self, zp=None, in_mjdrange=None, min_detection=None):
         """ """
         if zp is None:
             zp = self.data["ZP"].values
@@ -102,15 +120,25 @@ class LightCurve( object ):
         error = self.data["flux_err"] * coef
         detection = flux/error
         
-        lcdata = self.data[["mjd","mag","mag_err","filter","field_id","x_pos","y_pos","seeing", "flag","mag_lim"]].copy()
+        lcdata = self.data[["mjd","mag","mag_err","filter","field_id","x_pos","y_pos", "flag","mag_lim"]].copy()
         lcdata["zp"] = zp
         lcdata["flux"] = flux
         lcdata["error"] = error
         lcdata["detection"] = detection
-        lcdata["filter"] = lcdata["filter"].replace("ztfg","p48g").replace("ztfr","p48r").replace("ztfi","p48i")
+        lcdata["filter"] = lcdata["filter"].replace("ztfg","p48g").replace("ztfr","p48r").replace("ztfi","p48i") 
+
+        if self.has_salt2param():
+            lcdata["phase"] = lcdata["mjd"]-self.salt2param['t0']
+        else:
+            lcdata["phase"] = np.NaN
+            
         if in_mjdrange is not None:
             lcdata = lcdata[lcdata["mjd"].between(*in_mjdrange)]
-            
+
+        if min_detection is not None:
+            lcdata = lcdata[lcdata["detection"]>min_detection]
+
+
         return lcdata
         
     def show(self, ax=None, figsize=None, zp=None, formattime=True, zeroline=True,
@@ -132,8 +160,9 @@ class LightCurve( object ):
         # - End axes definition
         # -- 
         # - Data
-        base_prop = dict(ls="None", mec="0.9", mew=0.5, ecolor="0.7")
-        lineprop = dict(color="0.7", zorder=1, lw=0.5)
+        base_prop = dict(ls="None", mec="0.9", mew=0.5, ecolor="0.7", zorder=7)
+        bad_prop  = dict(ls="None", mew=1, ecolor="0.7", zorder=6)        
+        lineprop  = dict(color="0.7", zorder=1, lw=0.5)
         
         saltmodel = self.get_saltmodel() if incl_salt2 else None
         modeltime = self.salt2param.t0 + np.linspace(-15,50,100)
@@ -142,41 +171,61 @@ class LightCurve( object ):
         lightcurves = self.get_lcdata(zp=zp, in_mjdrange=timerange)
         
         bands = np.unique(lightcurves["filter"])
+        
+        # flag goods
+        flag_good = (lightcurves.flag&1==0) & (lightcurves.flag&2==0) & (lightcurves.flag&4==0) & (lightcurves.flag&8==0)
 
+        max_saltlc = 0
+        min_saltlc = 100
         # Loop over bands
         for band_ in bands:
             if band_ not in ZTFCOLOR:
                 warnings.warn(f"WARNING: Unknown instrument: {band_} | magnitude not shown")
                 continue
+
+            flagband   = (lightcurves["filter"]==band_)
             
-            
+            bdata = lightcurves[flagband]
+            flag_good_ = flag_good[flagband]
+                
+            # IN FLUX
             if not inmag:
-                bdata = lightcurves[lightcurves["filter"]==band_]
+                # - Data
                 datatime = Time(bdata["mjd"], format="mjd").datetime
                 y, dy = bdata["flux"], bdata["error"]
-                ax.errorbar(datatime,
-                                y,  yerr= dy, 
-                                label=band_, 
-                                **{**base_prop, **ZTFCOLOR[band_],**kwargs}
-                                )
-                if saltmodel is not None:
-                    ax.plot(Time(modeltime, format="mjd").datetime,
-                                saltmodel.bandflux(band_, modeltime, zp=self.flux_zp, zpsys="ab"),
-                                color=ZTFCOLOR[band_]["mfc"])
-                                
+                # - Salt                
+                saltdata = saltmodel.bandflux(band_, modeltime, zp=self.flux_zp, zpsys="ab") if saltmodel is not None else None
+                    
+            # IN MAG                                
             else:
-                bdata = lightcurves[(lightcurves["filter"]==band_) & (lightcurves["mag"]<99)]
+                flag_det = (lightcurves["mag"]<99)
+                # - Data                
+                bdata = bdata[flag_det]
+                flag_good_ = flag_good_[flag_det]
                 datatime = Time(bdata["mjd"], format="mjd").datetime
                 y, dy = bdata["mag"], bdata["mag_err"]
-                ax.errorbar(datatime,
-                                y,  yerr= dy, 
-                                label=band_, 
-                                **{**base_prop, **ZTFCOLOR[band_],**kwargs}
-                                )
-                if saltmodel is not None:
-                    ax.plot(Time(modeltime, format="mjd").datetime,
-                                saltmodel.bandmag(band_, "ab",modeltime), color=ZTFCOLOR[band_]["mfc"])
-
+                # - Salt
+                saltdata = saltmodel.bandmag(band_, "ab",modeltime) if saltmodel is not None else None
+                
+            # -> good
+            ax.errorbar(datatime[flag_good_],
+                            y[flag_good_],  yerr=dy[flag_good_], 
+                            label=band_, 
+                            **{**base_prop, **ZTFCOLOR[band_],**kwargs}
+                            )
+            # -> bad
+            ax.errorbar(datatime[~flag_good_],
+                            y[~flag_good_],  yerr=dy[~flag_good_], 
+                            label=band_, 
+                            **{**bad_prop, **BAD_ZTFCOLOR[band_],**kwargs}
+                            )
+            ax.plot(Time(modeltime, format="mjd").datetime,
+                    saltdata,
+                    color=ZTFCOLOR[band_]["mfc"], zorder=5)
+            
+            max_saltlc = np.max([max_saltlc, np.max(saltdata)])
+            min_saltlc = np.min([min_saltlc, np.min(saltdata)])
+            
         if inmag:
             ax.invert_yaxis()
             for band_ in bands:
@@ -210,6 +259,12 @@ class LightCurve( object ):
             
         if autoscale_salt:
             ax.set_xlim(*Time(timerange,format="mjd").datetime)
+            if not inmag:
+                ax.set_ylim(bottom=-max_saltlc*0.25)
+                ax.set_ylim(top=max_saltlc*1.25)
+            else:
+                print(min_saltlc)
+                ax.set_ylim(top=min_saltlc*0.95)
                     
         return fig
     

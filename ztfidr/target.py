@@ -23,11 +23,11 @@ class Target():
         self.set_meta(meta)
         
     @classmethod
-    def from_name(cls, targetname):
+    def from_name(cls, targetname, load_snidres=True):
         """ """
         from . import lightcurve, spectroscopy
         lc = lightcurve.LightCurve.from_name(targetname)
-        spec = spectroscopy.Spectrum.from_name(targetname, as_spectra=False)
+        spec = spectroscopy.Spectrum.from_name(targetname, as_spectra=False, load_snidres=load_snidres)
         meta = TARGET_DATA.loc[targetname]
         this = cls(lc, spec, meta=meta)
         this._name = targetname
@@ -132,13 +132,29 @@ class Target():
             snidres.append(snidres_)
                 
         return snidres[0] if not self.has_multiple_spectra() else snidres
-        
+
+    def get_redshift(self ):
+        """ """
+        return self.meta["redshift"], self.meta["z_quality"]
+
+    def get_obsphase(self, **kwargs):
+        """ """
+        phase_ = self.get_lc_obsphase(**kwargs)
+        phase_["spectra"] = self.get_spec_obsphase()
+        return phase_
+    
+    def get_lc_obsphase(self, groupby="filter", min_detection=5, **kwargs):
+        """ """
+        return self.lightcurve.get_obsphase(groupby=groupby, min_detection=min_detection, **kwargs)
+
+    def get_spec_obsphase(self):
+        """ """
+        return [spec_.get_phase(self.salt2param["t0"], self.get_redshift()[0])
+                                    for spec_ in np.atleast_1d(self.spectra)]
+    
     # -------- #
     #  LOADER  #
     # -------- #
-    def get_redshift(self, ):
-        """ """
-        return self.meta["redshift"], self.meta["z_quality"]
     
     # -------- #
     # PLOTTER  #
