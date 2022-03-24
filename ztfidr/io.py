@@ -71,13 +71,27 @@ def get_coords_data(load=True, index_col=0, **kwargs):
         return filepath
     return pandas.read_csv(filepath, index_col=index_col, **kwargs)
 
-def get_host_data(load=True, index_col=0, **kwargs):
+def get_host_data(load=True, index_col=0, which=None, **kwargs):
     """ """
     filepath =  os.path.join(IDR_PATH,"tables",
                              "host_info/ztfdr2_hostmags.csv")
     if not load:
         return filepath
-    return pandas.read_csv(filepath, index_col=index_col, **kwargs)
+    
+    host_alldata = pandas.read_csv(filepath, index_col=index_col, **kwargs)
+    if which is None:
+        return host_alldata
+
+    requested = f"{which}_mag" 
+    if requested not in host_alldata:
+        raise ValueError(f"Unknown entry: {requested} (which={which})")
+
+    host_data = host_alldata[requested]
+    host_err  = host_alldata[requested+"_err"]
+    data  = pandas.DataFrame( list(host_data.apply( eval ) ), index=host_data.index)
+    error = pandas.DataFrame( list(host_err.apply( eval ) ), index=host_err.index)
+    error.columns += "_err"
+    return pandas.merge(data, error, left_index=True, right_index=True)    
 
 # ================== #
 #                    #
