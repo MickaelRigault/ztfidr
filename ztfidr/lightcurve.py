@@ -71,6 +71,7 @@ class LightCurve( object ):
         from .salt2 import get_target_salt2param
         salt2param = get_target_salt2param(targetname)
         self.set_salt2param(salt2param)
+        
     # --------- #
     #  SETTER   #
     # --------- #
@@ -140,7 +141,43 @@ class LightCurve( object ):
 
 
         return lcdata
+
+
+
+    def get_sncosmotable(self, min_detection=5,  phase_range=[-10,30], filters=["p48r","p48g"]):
+        """ """
+        from .utils import mag_to_flux
         
+        t0 = self.salt2param["t0"]
+        to_fit = self.get_lcdata(min_detection=min_detection, in_mjdrange= t0 + phase_range)
+        flag_good = (to_fit.flag&1==0) & (to_fit.flag&2==0) & (to_fit.flag&4==0) & (to_fit.flag&8==0)
+        if filters is not None and filters not in ["*","all"]:
+            flag_good = flag_good & to_fit["filter"].isin(np.atleast_1d(filters)) 
+
+        sncosmo_lc = to_fit[flag_good].rename({"mjd":"time", "filter":"band"}, axis=1)[["time","band","zp","mag","mag_err"]]
+        sncosmo_lc["zpsys"] = "ab"
+        sncosmo_lc["flux"], sncosmo_lc["flux_err"] = mag_to_flux(sncosmo_lc["mag"],
+                                                                 sncosmo_lc["mag_err"],
+                                                                 zp=sncosmo_lc["zp"])
+        return sncosmo_lc
+
+    def fit_salt(self, free_parameters=['t0', 'x0', 'x1', 'c'],
+                min_detection=5, phase_range=[-10,30], filters=["p48r","p48g"], **kwargs):
+        """ """
+        import sncosmo
+        from astropy import table
+        model = self.get_saltmodel()
+        sncosmo_df = self.get_sncosmotable(min_detection=min_detection, 
+                                           phase_range=phase_range, 
+                                           filters=filters)
+        fitted_data = table.Table.from_pandas(sncosmo_df)
+        (result, fitted_model) = sncosmo.fit_lc(fitted_data, model,
+                                            vparam_names=free_parameters,  **kwargs)
+        return (fitted_data,model), (result, fitted_model)
+
+    # --------- #
+    #  PLOTTER  #
+    # --------- #
     def show(self, ax=None, figsize=None, zp=None, formattime=True, zeroline=True,
                  incl_salt2=True, autoscale_salt=True, clear_yticks=True,
                  zprop={}, inmag=False, ulength=0.1, ualpha=0.1, notplt=False, **kwargs):
