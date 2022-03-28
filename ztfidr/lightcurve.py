@@ -109,19 +109,51 @@ class LightCurve( object ):
                                                      )[["z","t0","x0","x1","c",
                                                         "mwebv"]].to_dict()
                             )
-    def get_lcdata(self, zp=None, in_mjdrange=None, min_detection=None):
-        """ """
+    def get_lcdata(self, zp=None, in_mjdrange=None, min_detection=None,
+                       flagout=[1,2,4,8,256]):
+        """ 
+        flagout: [list of int or string]
+            flag == 0 means all good, but in details:
+            
+            0: no warning 
+            1: flux_err==0 Remove unphysical errors 
+            2: chi2dof>3: Remove extreme outliers 
+            4: cloudy>1: BTS cut 
+            8: infobits>0: BTS cut 16: mag_lim<19.3: Cut applied in Dhawan 2021 
+            32: seeing>3: Cut applied in Dhawan 2021 
+            64: fieldid>879: Recommended IPAC cut 
+            128: moonilf>0.5: Recommended IPAC cut 
+            256: has_baseline>1: Has a valid baseline correction 
+            512: airmass>2: Recommended IPAC cut 
+            1024: flux/flux_err>=5: Nominal detection
+
+        """
+
+        if flagout in ["all","any","*"]:
+            data = self.data[self.data["flag"]==0]
+            
+        if flagout in ["all","any","*"]:
+            data = self.data[self.data["flag"]==0]
+        elif flagout is None:
+            data = self.data.copy()
+        else:
+            flag_ = np.all([(self.data.flag&i_==0) for i_ in np.atleast_1d(flagout)], axis=0)
+            data = self.data[flag_]            
+            
+
         if zp is None:
-            zp = self.data["ZP"].values
+            zp = data["ZP"].values
             coef = 1.
         else:
-            coef = 10 ** (-(self.data["ZP"].values - zp) / 2.5)
+            coef = 10 ** (-(data["ZP"].values - zp) / 2.5)
+
             
-        flux  = self.data["flux"] * coef
-        error = self.data["flux_err"] * coef
+        flux  = data["flux"] * coef
+        error = data["flux_err"] * coef
         detection = flux/error
+            
         
-        lcdata = self.data[["mjd","mag","mag_err","filter","field_id","x_pos","y_pos", "flag","mag_lim"]].copy()
+        lcdata = data[["mjd","mag","mag_err","filter","field_id","x_pos","y_pos", "flag","mag_lim"]]
         lcdata["zp"] = zp
         lcdata["flux"] = flux
         lcdata["error"] = error

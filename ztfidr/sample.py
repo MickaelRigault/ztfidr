@@ -89,9 +89,8 @@ class Sample():
         return data
 
     def get_goodlc_targets(self, n_early_points=">=2", n_late_points=">=5", n_points=">=10", n_bands=">=2", sql_query=None,
-                               premax_range=[-15,-1], postmax_range=[1,30], phase_range=[-15,30], **kwargs):
+                               premax_range=[-15,0], postmax_range=[0,30], phase_range=[-15,30], **kwargs):
         """ """
-        
         base_query = f"n_early_points{n_early_points} and n_late_points{n_late_points} and n_points{n_points} and n_bands{n_bands}"
         if sql_query is not None:
             base_query +=base_query
@@ -99,7 +98,6 @@ class Sample():
         phase_coverage = self.get_phase_coverage(premax_range=premax_range, postmax_range=postmax_range,
                                                      phase_range=phase_range, **kwargs)
         return phase_coverage.query(base_query).index.astype("string")
-
 
     def get_target_lightcurve(self, name):
         """ """
