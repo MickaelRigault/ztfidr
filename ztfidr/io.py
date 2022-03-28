@@ -16,7 +16,6 @@ IDR_PATH = os.getenv("ZTFIDRPATH", "./dr2")
 #   TARGET           #
 #                    #
 # ================== #
-
 def get_target_lc(target, test_exist=True):
     """ """
     fullpath = os.path.join(IDR_PATH, "lightcurves",f"{target}_LC.csv")
@@ -27,11 +26,6 @@ def get_target_lc(target, test_exist=True):
         
     return fullpath
 
-# ================== #
-#                    #
-#   TARGET           #
-#                    #
-# ================== #
 def get_targets_data(merge_how="outer"):
     """ """
     redshift = get_redshif_data() 
@@ -55,6 +49,7 @@ def get_autotyping(load=True, index_col=0, **kwargs):
     if not load:
         return filepath
     return pandas.read_csv(filepath, index_col=index_col, **kwargs)
+
 def get_redshif_data(load=True, index_col=0, **kwargs):
     """ """
     filepath =  os.path.join(IDR_PATH,"tables",
@@ -114,6 +109,21 @@ def get_salt2params(load=True, **kwargs):
         return filepath
     return pandas.read_csv(filepath, **kwargs).set_index("ztfname")
 
+def get_phase_coverage(load=True, warn=True, **kwargs):
+    """ """
+    filepath =  os.path.join(IDR_PATH,"tables", "phase_coverage.csv")
+    if not load:
+        return filepath
+    
+    if not os.path.isfile(filepath):
+        if warn:
+            warnings.warn("No phase_coverage file. build one using ztfidr.Sample().build_phase_coverage(store=True)")
+        return None
+    
+    return pandas.read_csv(filepath, index_col=0, **kwargs
+                          ).reset_index().rename({"index":"name"}, axis=1).set_index(["name","filter"])["phase"]
+
+    
 
 # ================== #
 #                    #
