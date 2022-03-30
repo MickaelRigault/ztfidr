@@ -143,7 +143,7 @@ class LightCurve( object ):
 
         if zp is None:
             zp = data["ZP"].values
-            coef = 1.
+            coef = 1. 
         else:
             coef = 10 ** (-(data["ZP"].values - zp) / 2.5)
 

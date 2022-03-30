@@ -12,16 +12,16 @@ class Sample():
         self.set_targetsdata(targetsdata)
     
     @classmethod
-    def load(cls):
+    def load(cls, default_salt2=True):
         """ """
-        salt2param = io.get_salt2params()
+        salt2param = io.get_salt2params(default=default_salt2)
         targetsdata = io.get_targets_data()
         return cls(salt2param=salt2param, targetsdata=targetsdata)
     
     def load_fiedid(self):
         """ """
         from ztfquery import fields
-        fieldid = [fields.get_fields_containing_target(s_["sn_ra"],s_["sn_dec"])
+        fieldid = [fields.get_fields_containing_target(s_["ra"],s_["dec"])
                        for i_,s_ in self.data.iterrows()]
         self.data["fieldid"] = fieldid
 
@@ -88,24 +88,35 @@ class Sample():
             
         return data
 
-    def get_goodlc_targets(self, n_early_points=">=2", n_late_points=">=5", n_points=">=10", n_bands=">=2", sql_query=None,
-                               premax_range=[-15,0], postmax_range=[0,30], phase_range=[-15,30], **kwargs):
-        """ """
-        base_query = f"n_early_points{n_early_points} and n_late_points{n_late_points} and n_points{n_points} and n_bands{n_bands}"
-        if sql_query is not None:
-            base_query +=base_query
-
-        phase_coverage = self.get_phase_coverage(premax_range=premax_range, postmax_range=postmax_range,
-                                                     phase_range=phase_range, **kwargs)
-        return phase_coverage.query(base_query).index.astype("string")
+    def get_goodlc_targets(self, n_early_points=">=2",
+                               n_late_points=">=5",
+                               n_points=">=10",
+                               n_bands=">=2",
+                               premax_range=[-15,0],
+                               postmax_range=[0,30],
+                               phase_range=[-15,30],
+                               **kwargs):
+        """ kwargs should have the same format as the n_early_point='>=2' for instance.
+        None means no constrain, like n_bands=None means 'n_bands' is not considered.
+        """
+        query = {**dict(n_early_points=n_early_points, n_late_points=n_late_points,
+                        n_points=n_points,n_bands=n_bands),
+                 **kwargs}
+        df_query = " and ".join([f"{k}{v}" for k,v in query.items() if v is not None])
+        print(df_query)
+        phase_coverage = self.get_phase_coverage(premax_range=premax_range,
+                                                 postmax_range=postmax_range,
+                                                 phase_range=phase_range)
+        return phase_coverage.query(df_query).index.astype("string")
 
     def get_target_lightcurve(self, name):
         """ """
         from . import lightcurve
         return lightcurve.LightCurve.from_name(name)
     
-    def get_phase_coverage(self, premax_range=[-15,-1], postmax_range=[1,30], min_det_perband=1,
-                               phase_range=[-15,30]):
+    def get_phase_coverage(self,premax_range=[-15,0],
+                                postmax_range=[0,30],
+                                phase_range=[-15,30], min_det_perband=1):
         """ """        
         # All
         phases = self.phasedf[self.phasedf.between(*phase_range)].reset_index().rename({"level_0":"name"},axis=1)

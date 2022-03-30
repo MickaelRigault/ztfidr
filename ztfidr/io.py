@@ -102,9 +102,16 @@ def get_baseline_corrections(load=True):
     return pandas.concat({band:pandas.read_csv(filepath, index_col=0)
                             for band in ["g","r","i"]})
 
-def get_salt2params(load=True, **kwargs):
+def get_salt2params(load=True, default=True, **kwargs):
     """ """
-    filepath = os.path.join(IDR_PATH,"tables","ztfdr2_salt2_params.csv")
+    if default:
+        filename ="ztfdr2_salt2_params.csv"
+    else:
+        warnings.warn("Not using the default salt2 file")
+        filename = "ztfdr2_salt2_params_phase-10to30_color-0.4to0.8.csv"
+
+    filepath = os.path.join(IDR_PATH,"tables", filename)
+    
     if not load:
         return filepath
     return pandas.read_csv(filepath, **kwargs).set_index("ztfname")
