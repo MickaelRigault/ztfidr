@@ -109,9 +109,17 @@ class LightCurve( object ):
                                                      )[["z","t0","x0","x1","c",
                                                         "mwebv"]].to_dict()
                             )
-    def get_lcdata(self, zp=None, in_mjdrange=None, min_detection=None,
+    def get_lcdata(self, zp=None, in_mjdrange=None,
+                       min_detection=None,
+                       filters=["p48g","p48r"],
                        flagout=[1,2,4,8,256]):
         """ 
+        filters: [string, None or list]
+            list of filters 
+            - None/'*' or 'all': no filter selection/
+            - string: just this filter (e.g. 'p48g')
+            - list of string: just these filters (e.g. ['p48g','p48r'])
+
         flagout: [list of int or string]
             flag == 0 means all good, but in details:
             
@@ -154,12 +162,17 @@ class LightCurve( object ):
             
         
         lcdata = data[["mjd","mag","mag_err","filter","field_id","x_pos","y_pos", "flag","mag_lim"]]
-        lcdata["zp"] = zp
-        lcdata["flux"] = flux
-        lcdata["error"] = error
-        lcdata["detection"] = detection
+        additional = pandas.DataFrame(np.asarray([zp, flux,error, detection]).T,
+                                         columns=["zp", "flux", "error", "detection"],
+                                         index=lcdata.index)
+        lcdata = pandas.merge(lcdata, additional, left_index=True, right_index=True)
+#        lcdata.loc["zp",:] = zp
+#        lcdata["flux"] = flux
+#        lcdata["error"] = error
+#        lcdata["detection"] = detection
         lcdata["filter"] = lcdata["filter"].replace("ztfg","p48g").replace("ztfr","p48r").replace("ztfi","p48i") 
-
+        
+        
         if self.has_salt2param():
             lcdata["phase"] = lcdata["mjd"]-self.salt2param['t0']
         else:
@@ -171,22 +184,20 @@ class LightCurve( object ):
         if min_detection is not None:
             lcdata = lcdata[lcdata["detection"]>min_detection]
 
-
+        if filters is not None or filters not in ["*","all"]:
+            lcdata = lcdata[lcdata["filter"].isin(np.atleast_1d(filters))]
+            
         return lcdata
 
 
-
-    def get_sncosmotable(self, min_detection=5,  phase_range=[-10,30], filters=["p48r","p48g"]):
+    def get_sncosmotable(self, min_detection=5,  phase_range=[-10,30], filters=["p48r","p48g"], **kwargs):
         """ """
         from .utils import mag_to_flux
         
         t0 = self.salt2param["t0"]
-        to_fit = self.get_lcdata(min_detection=min_detection, in_mjdrange= t0 + phase_range)
-        flag_good = (to_fit.flag&1==0) & (to_fit.flag&2==0) & (to_fit.flag&4==0) & (to_fit.flag&8==0)
-        if filters is not None and filters not in ["*","all"]:
-            flag_good = flag_good & to_fit["filter"].isin(np.atleast_1d(filters)) 
-
-        sncosmo_lc = to_fit[flag_good].rename({"mjd":"time", "filter":"band"}, axis=1)[["time","band","zp","mag","mag_err"]]
+        to_fit = self.get_lcdata(min_detection=min_detection, in_mjdrange= t0 + phase_range,
+                                 filters=filters, **kwargs)
+        sncosmo_lc = to_fit.rename({"mjd":"time", "filter":"band"}, axis=1)[["time","band","zp","mag","mag_err"]]
         sncosmo_lc["zpsys"] = "ab"
         sncosmo_lc["flux"], sncosmo_lc["flux_err"] = mag_to_flux(sncosmo_lc["mag"],
                                                                  sncosmo_lc["mag_err"],
@@ -194,10 +205,13 @@ class LightCurve( object ):
         return sncosmo_lc
 
     def fit_salt(self, free_parameters=['t0', 'x0', 'x1', 'c'],
-                min_detection=5, phase_range=[-10,30], filters=["p48r","p48g"], **kwargs):
+                       min_detection=5, phase_range=[-10,30], filters=["p48r","p48g"],
+                       as_dataframe=False,
+                       **kwargs):
         """ """
         import sncosmo
         from astropy import table
+        from .salt2 import salt2result_to_dataframe
         model = self.get_saltmodel()
         sncosmo_df = self.get_sncosmotable(min_detection=min_detection, 
                                            phase_range=phase_range, 
@@ -205,7 +219,35 @@ class LightCurve( object ):
         fitted_data = table.Table.from_pandas(sncosmo_df)
         (result, fitted_model) = sncosmo.fit_lc(fitted_data, model,
                                             vparam_names=free_parameters,  **kwargs)
+        if as_dataframe:
+            return salt2result_to_dataframe(result)
+        
         return (fitted_data,model), (result, fitted_model)
+
+    def fit_salt_perfilter(lc, filters=["p48g",'p48r','p48i'],
+                           min_detection=5, free_parameters=['t0','x0', 'x1'],
+                           phase_range=[-10, 30], t0_range=[-2,+2]):
+        """ """
+        results = []
+        for filter_ in filters:
+            try:
+                result  = lc.fit_salt(min_detection=min_detection,
+                                      filters=filter_,
+                                      free_parameters=free_parameters,
+                                      phase_range=phase_range,
+                                      bounds={"t0":lc.salt2param['t0']+t0_range},
+                                      as_dataframe=True
+                                      )
+            except:
+                warnings.warn(f"failed for filter {filter_}")
+                result = pandas.DataFrame()
+
+            results.append(result)
+            
+        return pandas.concat(results, keys=filters)
+        
+    
+    
 
     # --------- #
     #  PLOTTER  #
@@ -324,7 +366,7 @@ class LightCurve( object ):
             mean_error = np.nanmean(lightcurves["error"])
             ax.set_ylim(-2*mean_error, max_data*1.15)
             if clear_yticks:
-                ax.set_yticklabels(["" for _ in ax.get_yticklabels()])
+                ax.axes.yaxis.set_ticklabels([])
             
         if autoscale_salt:
             ax.set_xlim(*Time(timerange,format="mjd").datetime)
