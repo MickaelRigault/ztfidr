@@ -184,7 +184,7 @@ class LightCurve( object ):
         if min_detection is not None:
             lcdata = lcdata[lcdata["detection"]>min_detection]
 
-        if filters is not None or filters not in ["*","all"]:
+        if filters is not None and filters not in ["*","all"]:
             lcdata = lcdata[lcdata["filter"].isin(np.atleast_1d(filters))]
             
         return lcdata
