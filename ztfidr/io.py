@@ -69,7 +69,7 @@ def get_coords_data(load=True, index_col=0, **kwargs):
 def get_host_data(load=True, index_col=0, which=None, **kwargs):
     """ """
     filepath =  os.path.join(IDR_PATH,"tables",
-                             "host_info/ztfdr2_hostmags.csv")
+                             "ancilliary_info/host_photometry/ztfdr2_hostmags.csv")
     if not load:
         return filepath
     
@@ -104,11 +104,8 @@ def get_baseline_corrections(load=True):
 
 def get_salt2params(load=True, default=True, **kwargs):
     """ """
-    if default:
-        filename ="ztfdr2_salt2_params.csv"
-    else:
-        warnings.warn("Not using the default salt2 file")
-        filename = "ztfdr2_salt2_params_phase-15to30_color-0.4to0.8.csv"
+    
+    filename = "ztfdr2_salt2_params_phase-15to30_color-0.4to0.8.csv"
 
     filepath = os.path.join(IDR_PATH,"tables", filename)
     
@@ -118,7 +115,7 @@ def get_salt2params(load=True, default=True, **kwargs):
 
 def get_phase_coverage(load=True, warn=True, **kwargs):
     """ """
-    filepath =  os.path.join(IDR_PATH,"tables", "phase_coverage.csv")
+    filepath =  os.path.join(IDR_PATH, "tables", "phase_coverage.csv")
     if not load:
         return filepath
     
