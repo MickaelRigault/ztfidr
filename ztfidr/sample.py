@@ -50,14 +50,18 @@ class Sample():
     def set_targetsdata(self, targetsdata):
         """ """
         self._targetsdata = targetsdata
-    
+
+    def merge_to_data(self, dataframe, how="outer", **kwargs):
+        """ """
+        self._data = pandas.merge(self.data, dataframe, how=how, 
+                                 **{**dict(left_index=True, right_index=True),
+                                 **kwargs})
+        
     # ------- #
     # GETTER  #
     # ------- #
-    def get_data(self, clean_t0nan=True, t0range=None, 
-                 z_quality=None, 
-                 lc_quality=None, 
-                 salt_quality=None):
+    def get_data(self, clean_t0nan=True, t0range=None,
+                     z_quality=None, query=None, in_targetlist=None):
         """ 
             
         t0range: [None or [tmin,tmax]]
@@ -80,11 +84,11 @@ class Sample():
         if z_quality is not None and z_quality not in ["any","all","*"]:
             data = data[data["z_quality"].isin(np.atleast_1d(z_quality))]
         
-        if lc_quality is not None and lc_quality not in ["any","all","*"]:
-            data = data[data["lccoverage_flag"].isin(np.atleast_1d(lc_quality))]
+        if in_targetlist is not None:
+            data = data.loc[np.asarray(in_targetlist)[np.in1d(in_targetlist, data.index.astype("string"))] ]
             
-        if salt_quality is not None and salt_quality not in ["any","all","*"]:
-            data = data[data["lcquality_flag"].isin(np.atleast_1d(salt_quality))]
+        if query:
+            data = data.query(query)
             
         return data
 
@@ -208,6 +212,8 @@ class Sample():
     # ------- #
     # PLOTTER #
     # ------- #
+
+    
     def show_discoveryhist(self, ax=None, daymax=15, linecolor="C1", **kwargs):
         """ """
         from matplotlib.colors import to_rgba

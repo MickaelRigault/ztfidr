@@ -108,7 +108,7 @@ def get_salt2params(load=True, default=True, **kwargs):
         filename ="ztfdr2_salt2_params.csv"
     else:
         warnings.warn("Not using the default salt2 file")
-        filename = "ztfdr2_salt2_params_phase-10to30_color-0.4to0.8.csv"
+        filename = "ztfdr2_salt2_params_phase-15to30_color-0.4to0.8.csv"
 
     filepath = os.path.join(IDR_PATH,"tables", filename)
     
