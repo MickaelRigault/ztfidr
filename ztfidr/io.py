@@ -53,7 +53,7 @@ def get_autotyping(load=True, index_col=0, **kwargs):
 def get_redshif_data(load=True, index_col=0, **kwargs):
     """ """
     filepath =  os.path.join(IDR_PATH,"tables",
-                             "ztfdr2_redshift.csv")
+                             "ztfdr2_redshifts.csv")
     if not load:
         return filepath
     return pandas.read_csv(filepath, index_col=index_col, **kwargs)
