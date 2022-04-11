@@ -4,6 +4,11 @@ import numpy as np
 import pandas
 from . import io
 
+def get_sample():
+    """ Short to to Sample.load() """
+    return Sample.load()
+
+
 class Sample():
     
     def __init__(self, data=None):

@@ -5,7 +5,7 @@ import numpy as np
 IDR_PATH = os.getenv("ZTFIDRPATH", "./dr2")
 
 __all__ = ["get_targets_data",
-           "get_hosts_data",
+           "get_host_data",
            "get_target_lc",
            "get_autotyping"]
 # ================== #
