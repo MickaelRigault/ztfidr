@@ -6,18 +6,23 @@ from . import io
 
 class Sample():
     
-    def __init__(self, salt2param=None, targetsdata=None):
+    def __init__(self, data=None):
         """ """
-        self.set_salt2param(salt2param)
-        self.set_targetsdata(targetsdata)
+        self.set_data(data)
     
     @classmethod
     def load(cls, default_salt2=True):
         """ """
-        salt2param = io.get_salt2params(default=default_salt2)
-        targetsdata = io.get_targets_data()
-        return cls(salt2param=salt2param, targetsdata=targetsdata)
-    
+        data = io.get_targets_data()
+        return cls(data=data)
+
+    # ------- #
+    # LOADER  #
+    # ------- #
+    def load_hostdata(self):
+        """ """
+        self.set_hostdata( io.get_host_data() )
+        
     def load_fiedid(self):
         """ """
         from ztfquery import fields
@@ -42,15 +47,14 @@ class Sample():
     # ------- #
     # SETTER  #
     # ------- #
-    def set_salt2param(self, salt2param):
+    def set_data(self, data):
         """ """
-        salt2param["t0day"] = np.asarray(salt2param["t0"].astype("float"), dtype="int")
-        self._salt2param = salt2param
-        
-    def set_targetsdata(self, targetsdata):
-        """ """
-        self._targetsdata = targetsdata
+        self._data = data
 
+    def set_hostdata(self, hostdata):
+        """ """
+        self._hostdata = hostdata
+        
     def merge_to_data(self, dataframe, how="outer", **kwargs):
         """ """
         self._data = pandas.merge(self.data, dataframe, how=how, 
@@ -60,14 +64,47 @@ class Sample():
     # ------- #
     # GETTER  #
     # ------- #
-    def get_data(self, clean_t0nan=True, t0range=None,
-                     z_quality=None, query=None, in_targetlist=None):
+    def get_data(self, clean_t0nan=True,
+                     t0_range=None,  x1_range=None, c_range=None,
+                     redshift_range=None, z_quality=None,
+                     t0_err_range=None, c_err_range=None, x1_err_range=None,
+                     in_targetlist=None, goodcoverage=None, coverage_prop={},
+                     query=None):
         """ 
-            
-        t0range: [None or [tmin,tmax]]
+        *_range: [None or [min, max]] -optional-
+            cut to be applied to the data for
+            t0, x1, c, (and there error) and redshift.
+            boundaries are mandatory. For instance, redshift range lower than 0.06
+            should be: redshift_range = (0, 0.06).
+            = see below for t0 format =
+        
+        t0_range: [None or [tmin,tmax]] -optional-
             Should be a format automatically understood by astropy.time.Time
-            e.g. t0range=["2018-04-01","2020-10-01"]
-            
+            e.g. t0_range=["2018-04-01","2020-10-01"]
+
+
+        in_targetlist: [list of strings] -optional-
+            The target must be in this list
+
+        goodcoverage: [None or bool] -optional-
+            Select the data given the lc phase coverage
+            - None: no cut
+            - True: only good lc kept
+            - False: only bad lc kept (good lc discarded)
+            This uses self.get_goodcoverage_targets(**coverage_prop)
+
+        coverage_prop: [dict] -optional-
+            kwargs passed to self.get_goodcoverage_targets
+            = used only if goodcoverage is not None =
+
+        query: [string] -optional-
+            any additional query to be given to data.query({query}).
+            This are SQL-like format applied to the colums. 
+            See pandas.DataFrame.query()
+
+        Returns
+        -------
+        DataFrame (sub part or copy of self.data)
         """
         if clean_t0nan:
             data = self.data[~self.data["t0"].isna()]
@@ -75,27 +112,70 @@ class Sample():
             data = self.data.copy()
             
         # - Time Range
-        if t0range is not None:
-            t0_start = time.Time(t0range[0]).mjd
-            t0_end = time.Time(t0range[1]).mjd
+        if t0_range is not None:
+            t0_start = time.Time(t0_range[0]).mjd
+            t0_end = time.Time(t0_range[1]).mjd
             data = data[data["t0"].between(t0_start, t0_end)]
-        
-        # - zorigin
+
+        # LC Cuts
+        # - stretch (x1) range
+        if x1_range is not None:
+            data = data[data["x1"].between(*x1_range)]
+
+        # - color (c) range
+        if c_range is not None:
+            data = data[data["c"].between(*c_range)]
+
+        # - t0 errors  range
+        if t0_err_range is not None:
+            data = data[data["t0_err"].between(*t0_err_range)]
+            
+        # - stretch errors (x1) range
+        if x1_err_range is not None:
+            data = data[data["x1_err"].between(*x1_err_range)]
+
+        # - color errors (c) range
+        if c_err_range is not None:
+            data = data[data["c_err"].between(*c_err_range)]
+
+
+        # Redshift Cuts
+        # - Redshift range
+        if redshift_range is not None:
+            data = data[data["redshift"].between(*redshift_range)]
+            
+        # -  redshift origin
         if z_quality is not None and z_quality not in ["any","all","*"]:
             data = data[data["z_quality"].isin(np.atleast_1d(z_quality))]
-        
+
+        # Target cuts
+        # - in given list
         if in_targetlist is not None:
             data = data.loc[np.asarray(in_targetlist)[np.in1d(in_targetlist, data.index.astype("string"))] ]
-            
+
+        # - special good lc list.            
+        if goodcoverage is not None:
+            good_covarege_targets = self.get_goodcoverage_targets(**coverage_prop)
+            # doing it with np.in1d to make sure all matches and not some are already missing
+            flag_goodcoverage = np.asarray(good_covarege_targets)[np.in1d(good_covarege_targets, data.index.astype("string"))]
+            if goodcoverage:
+                data = data.loc[flag_goodcoverage]
+            else:
+                data = data.loc[~flag_goodcoverage]
+
+        # Additional Query
         if query:
             data = data.query(query)
             
         return data
-
-    def get_goodlc_targets(self, n_early_points=">=2",
-                               n_late_points=">=5",
-                               n_points=">=10",
-                               n_bands=">=2",
+    
+    def get_target_lightcurve(self, name):
+        """ Get the {name} LightCurve object """
+        from . import lightcurve
+        return lightcurve.LightCurve.from_name(name)
+    
+    def get_goodcoverage_targets(self, n_early_points=">=2", n_late_points=">=5",
+                                 n_points=">=10", n_bands=">=2",
                                premax_range=[-15,0],
                                postmax_range=[0,30],
                                phase_range=[-15,30],
@@ -107,16 +187,11 @@ class Sample():
                         n_points=n_points,n_bands=n_bands),
                  **kwargs}
         df_query = " and ".join([f"{k}{v}" for k,v in query.items() if v is not None])
-        print(df_query)
         phase_coverage = self.get_phase_coverage(premax_range=premax_range,
                                                  postmax_range=postmax_range,
                                                  phase_range=phase_range)
         return phase_coverage.query(df_query).index.astype("string")
 
-    def get_target_lightcurve(self, name):
-        """ """
-        from . import lightcurve
-        return lightcurve.LightCurve.from_name(name)
     
     def get_phase_coverage(self,premax_range=[-15,0],
                                 postmax_range=[0,30],
@@ -172,6 +247,7 @@ class Sample():
         datalc = self.get_data()
         datalc = datalc[datalc["redshift"].between(-0.1,0.2)]
 
+        warnings.warm("building phase coverage takes ~30s to 1min.")
         # - Without Dask
         if client is None:
             warnings.warn("loading without Dask (client is None) ; it will be slow")
@@ -202,7 +278,6 @@ class Sample():
 
         phasedf_exploded = phasedf.explode()
         if store:
-            print("STORING DATA")
             filepath = io.get_phase_coverage(load=False)
             phasedf_exploded.to_csv(filepath)
             
@@ -337,12 +412,6 @@ class Sample():
         ax.set_ylim(bottom=0)
         ax.tick_params("y", labelsize="small")
         return fig
-
-
-    def _build_data_(self):
-        """ """
-        self._data= pandas.merge(self.salt2param, self.targetsdata, 
-                                 left_index=True, right_index=True)
         
     # =============== #
     #   Properties    #
@@ -350,24 +419,20 @@ class Sample():
     @property
     def data(self):
         """ """
-        if not hasattr(self,"_data") or self._data is None:
-            self._build_data_()
         return self._data
-    
+
     @property
-    def salt2param(self):
+    def hostdata(self):
         """ """
-        return self._salt2param
-        
-    @property
-    def targetsdata(self):
-        """ """
-        return self._targetsdata
+        if not hasattr(self, "_hostdata"):
+            self.load_hostdata()
+        return self._hostdata
+
 
     @property
     def phasedf(self):
         """ """
         if not hasattr(self, "_phasedf"):
-            raise AttributeError("phase dataframe is jot yet loaded, see self.load_phasedf()")
+            self.load_phasedf()
         
         return self._phasedf

@@ -4,138 +4,180 @@ import pandas
 import numpy as np
 IDR_PATH = os.getenv("ZTFIDRPATH", "./dr2")
 
-
+__all__ = ["get_targets_data",
+           "get_hosts_data",
+           "get_target_lc",
+           "get_autotyping"]
 # ================== #
 #                    #
-#   DATA ACCESS      #
+#   TOP LEVEL        #
 #                    #
 # ================== #
-    
-# ================== #
-#                    #
-#   TARGET           #
-#                    #
-# ================== #
-def get_target_lc(target, test_exist=True):
+def get_targets_data():
     """ """
-    fullpath = os.path.join(IDR_PATH, "lightcurves",f"{target}_LC.csv")
-    if test_exist:
-        if not os.path.isfile(fullpath):
-            warnings.warn(f"No lc file for {target} ; {fullpath}")
-            return None
-        
-    return fullpath
+    redshifts = get_redshif_data().reset_index()
+    salt2params = get_salt2params().reset_index()
+    coords = get_coords_data().reset_index()
+    # merging
+    data_ = pandas.merge(salt2params, redshifts, on=["redshift","ztfname"],
+                             how="outer")
+    data_ = pandas.merge(data_, coords, on=["ztfname"],
+                             how="outer")
+    # set index
+    return data_.set_index("ztfname")
 
-def get_targets_data(merge_how="outer"):
+
+def get_host_data():
     """ """
-    redshift = get_redshif_data() 
-    coords = get_coords_data()
-    autotyping = get_autotyping()
+    hostmags = get_host_mags()
+    hostcoords = get_host_coords()
+    return pandas.merge( pandas.concat([hostcoords], keys=["global"], axis=1), # multi index
+                         hostmags, left_index=True, right_index=True, how="outer")
 
-    
-    dd = pandas.merge(coords,redshift, left_index=True,
-                          right_index=True, suffixes=("","_rt"),
-                          how=merge_how)
-    dd = pandas.merge(dd, autotyping, left_index=True,
-                          right_index=True, suffixes=("","_rt"),
-                          how=merge_how)
-    
-    return dd
+# ================== #
+#                    #
+#   BASICS           #
+#                    #
+# ================== #
 
-def get_autotyping(load=True, index_col=0, **kwargs):
+# Master List
+def get_masterlist(load=True, **kwargs):
     """ """
-    filepath =  os.path.join(IDR_PATH,"tables",
-                             "autotyping.csv")
+    filepath = os.path.join(IDR_PATH, "tables",
+                            "ztfdr2_masterlist.csv")
     if not load:
         return filepath
-    return pandas.read_csv(filepath, index_col=index_col, **kwargs)
-
+    
+    return pandas.read_csv(filepath, **kwargs)
+    
+# Redshifts
 def get_redshif_data(load=True, index_col=0, **kwargs):
     """ """
-    filepath =  os.path.join(IDR_PATH,"tables",
-                             "ztfdr2_redshifts.csv")
+    filepath = os.path.join(IDR_PATH, "tables",
+                            "ztfdr2_redshifts.csv")
     if not load:
         return filepath
-    return pandas.read_csv(filepath, index_col=index_col, **kwargs)
+    return pandas.read_csv(filepath, index_col=index_col, **kwargs
+                          ).rename({"z":"redshift"}, axis=1)
 
+# Coordinates
 def get_coords_data(load=True, index_col=0, **kwargs):
     """ """
-    filepath =  os.path.join(IDR_PATH,"tables",
-                             "ztfdr2_coordinates.csv")
+    filepath = os.path.join(IDR_PATH, "tables",
+                            "ztfdr2_coordinates.csv")
     if not load:
         return filepath
     return pandas.read_csv(filepath, index_col=index_col, **kwargs)
 
-def get_host_data(load=True, index_col=0, which=None, **kwargs):
+# SALT
+def get_salt2params(load=True, default=True, **kwargs):
     """ """
-    filepath =  os.path.join(IDR_PATH,"tables",
-                             "ancilliary_info/host_photometry/ztfdr2_hostmags.csv")
+    filename = "ztfdr2_salt2_params.csv" if default else "ztfdr2_salt2_params_phase-15to30_color-0.4to0.8.csv"
+    filepath = os.path.join(IDR_PATH, "tables",
+                                filename)
+
     if not load:
         return filepath
     
+    return pandas.read_csv(filepath, **kwargs
+                          ).rename({"z":"redshift"}, axis=1
+                          ).set_index("ztfname")
+
+
+# ================== #
+#                    #
+#   HOST             #
+#                    #
+# ================== #
+def get_host_coords(load=True, **kwargs):
+    """ """
+    filepath = os.path.join(IDR_PATH, "tables",
+                            "ancilliary_info/host_photometry/ztfdr2_hostcoords.csv")
+    if not load:
+        return filepath
+    
+    return pandas.read_csv(filepath, **{**dict(sep=" "),**kwargs}).set_index("ztfname")
+
+
+def get_host_mags(load=True, index_col=0, raw=False, **kwargs):
+    """ """
+    filepath = os.path.join(IDR_PATH, "tables",
+                            "ancilliary_info/host_photometry/ztfdr2_hostmags.csv")
+    if not load:
+        return filepath
+
     host_alldata = pandas.read_csv(filepath, index_col=index_col, **kwargs)
-    if which is None:
+    if raw:
         return host_alldata
 
-    requested = f"{which}_mag" 
-    if requested not in host_alldata:
-        raise ValueError(f"Unknown entry: {requested} (which={which})")
+    def _get_split_(which):
+        requested = f"{which}_mag"
+        if requested not in host_alldata:
+            raise ValueError(f"Unknown entry: {requested} (which={which})")
 
-    host_data = host_alldata[requested]
-    host_err  = host_alldata[requested+"_err"]
-    data  = pandas.DataFrame( list(host_data.apply( eval ) ), index=host_data.index)
-    error = pandas.DataFrame( list(host_err.apply( eval ) ), index=host_err.index)
-    error.columns += "_err"
-    return pandas.merge(data, error, left_index=True, right_index=True)    
+        host_data = host_alldata[requested].str.replace("nan", "np.nan")
+        host_err = host_alldata[requested+"_err"]
+        data = pandas.DataFrame(list(host_data.apply(eval)), index=host_data.index)
+        error = pandas.DataFrame(list(host_err.apply(eval)), index=host_err.index)
+        error.columns += "_err"
+        return pandas.merge(data, error, left_index=True, right_index=True)
 
+    warnings.warn("no global host magnitude yet.")
+    kpc2 = _get_split_(which="local_2kpc")
+    kpc4 = _get_split_(which="local_4kpc")
+    hglobal = host_alldata[["z","host_dlr"]]
+    return pandas.concat([kpc2, kpc4, hglobal], axis=1,
+                          keys=["2kpc", "4kpc", "global"])
+    
 # ================== #
 #                    #
 #   LIGHTCURVES      #
 #                    #
 # ================== #
-def get_baseline_corrections(load=True):
+def get_target_lc(target, test_exist=True):
     """ """
-    filepath =  os.path.join(IDR_PATH,"lightcurves","baseline_corr",
-                             f"DR2_Baseline_{band}band_corr.csv")
-    if not load:
-        return filepath
-    return pandas.concat({band:pandas.read_csv(filepath, index_col=0)
-                            for band in ["g","r","i"]})
+    fullpath = os.path.join(IDR_PATH, "lightcurves", f"{target}_LC.csv")
+    if test_exist:
+        if not os.path.isfile(fullpath):
+            warnings.warn(f"No lc file for {target} ; {fullpath}")
+            return None
 
-def get_salt2params(load=True, default=True, **kwargs):
-    """ """
-    
-    filename = "ztfdr2_salt2_params_phase-15to30_color-0.4to0.8.csv"
+    return fullpath
 
-    filepath = os.path.join(IDR_PATH,"tables", filename)
-    
-    if not load:
-        return filepath
-    return pandas.read_csv(filepath, **kwargs).set_index("ztfname")
 
 def get_phase_coverage(load=True, warn=True, **kwargs):
     """ """
-    filepath =  os.path.join(IDR_PATH, "tables", "phase_coverage.csv")
+    filepath = os.path.join(IDR_PATH, "tables", "phase_coverage.csv")
     if not load:
         return filepath
-    
+
     if not os.path.isfile(filepath):
         if warn:
-            warnings.warn("No phase_coverage file. build one using ztfidr.Sample().build_phase_coverage(store=True)")
+            warnings.warn(
+                "No phase_coverage file. build one using ztfidr.Sample().build_phase_coverage(store=True)")
         return None
-    
-    return pandas.read_csv(filepath, index_col=0, **kwargs
-                          ).reset_index().rename({"index":"name"}, axis=1).set_index(["name","filter"])["phase"]
 
-    
+    return pandas.read_csv(filepath, index_col=0, **kwargs
+                           ).reset_index().rename({"index": "name"}, axis=1
+                                                  ).set_index(["name", "filter"])["phase"]
+
 
 # ================== #
 #                    #
 #   Spectra          #
 #                    #
 # ================== #
+def get_autotyping(load=True, index_col=0, **kwargs):
+    """ """
+    filepath = os.path.join(IDR_PATH, "tables",
+                            "autotyping.csv")
+    if not load:
+        return filepath
+    return pandas.read_csv(filepath, index_col=index_col, **kwargs)
+
+
 def get_spectra_datafile(contains=None, startswith=None,
-                        snidres=False, extension=None, use_dask=False):
+                         snidres=False, extension=None, use_dask=False):
     """ """
     from glob import glob
     glob_format = "*" if not startswith else f"{startswith}*"
@@ -143,27 +185,27 @@ def get_spectra_datafile(contains=None, startswith=None,
         extension = "_snid.h5"
     elif extension is None:
         extension = ".ascii"
-        
+
     if contains is not None:
         glob_format += f"{contains}*"
     if extension is not None:
-        glob_format +=f"{extension}"
-        
-        
+        glob_format += f"{extension}"
+
     specfiles = glob(os.path.join(IDR_PATH, "spectra", glob_format))
     datafile = pandas.DataFrame(specfiles, columns=["fullpath"])
-    datafile["basename"] = datafile["fullpath"].str.split("/",expand=True).iloc[:,-1]
-    
-    return pandas.concat([datafile, parse_filename(datafile["basename"], snidres=snidres) ], axis=1)
+    datafile["basename"] = datafile["fullpath"].str.split(
+        "/", expand=True).iloc[:, -1]
 
-    
+    return pandas.concat([datafile, parse_filename(datafile["basename"], snidres=snidres)], axis=1)
+
+
 def parse_filename(file_s, snidres=False):
-    """ file or list of files. 
+    """ file or list of files.
     Returns
     -------
     Serie if single file, DataFrame otherwise
     """
-    
+
     index = ["name", "date", "telescope", "origin"]
     fdata = []
     for file_ in np.atleast_1d(file_s):
@@ -177,10 +219,10 @@ def parse_filename(file_s, snidres=False):
             except:
                 print(f"failed for {file_}")
                 continue
-            
+
         telescope = "_".join(telescope)
         fdata.append([name, date, telescope, origin])
-    
+
     if len(fdata) == 1:
         return pandas.Series(fdata[0], index=index)
     return pandas.DataFrame(fdata, columns=index)
