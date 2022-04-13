@@ -3,7 +3,8 @@ import warnings
 import numpy as np
 import pandas
 from . import io
-
+from astropy import time
+        
 def get_sample():
     """ Short to to Sample.load() """
     return Sample.load()
@@ -17,7 +18,7 @@ class Sample():
     
     @classmethod
     def load(cls, default_salt2=True):
-        """ """
+        """ Load a Sample instance building it from io.get_targets_data() """
         data = io.get_targets_data()
         return cls(data=data)
 
@@ -25,19 +26,37 @@ class Sample():
     # LOADER  #
     # ------- #
     def load_hostdata(self):
-        """ """
+        """ load the host data using io.get_host_data(). This is made automatically upon hostdata call. """
         self.set_hostdata( io.get_host_data() )
         
-    def load_fiedid(self):
-        """ """
-        from ztfquery import fields
-        fieldid = [fields.get_fields_containing_target(s_["ra"],s_["dec"])
-                       for i_,s_ in self.data.iterrows()]
-        self.data["fieldid"] = fieldid
-
-
     def load_phasedf(self, min_detection=5, groupby='filter', client=None, rebuild=False, **kwargs):
-        """ """
+        """ Load the phasedf. This is made automatically upton phasedf call.
+        If this is the first time ever you call this, the phasedf has to be built, so it takes ~45s.
+        Once built, the dataframe is stored such that, next time, it is directly loaded. 
+        Use rebuild=True to bypass the automatic loading and rebuild the dataframe.
+        
+        Parameters
+        ----------
+        min_detection: [float] -optional-
+            minimal signal to noise ratio for a point to be considered as 'detected'
+
+        groupby: [string or list of] -optional-
+            data column(s) to group the lightcurve data and measuring the count statistics.
+            example: filter, [filter, fieldid]
+             
+        client: [dask.Client] -optional-
+            if a dask.distributed.Client instance is given, this will use dask. 
+            Otherwise a basic for loop (slower) is used.
+
+        rebuild: [bool] -optional-
+            force the dataframe to be rebuilt.
+
+        **kwargs goes to self.build_phase_coverage()
+
+        Returns
+        -------
+        None
+        """
         if not rebuild:
             phasedf = io.get_phase_coverage(load=True, warn=False)
             if phasedf is None:
@@ -48,20 +67,42 @@ class Sample():
                                                     groupby=groupby,
                                                     client=client, store=True, **kwargs)
         self._phasedf = phasedf
-        
+
+    def load_fiedid(self):
+        """ compute the fields containing the targets using 
+        ztfquery.fields.get_fields_containing_target().
+        This take quite some time.
+
+        the 'fieldid' entry is added to self.data
+        """
+        from ztfquery import fields
+        fieldid = [fields.get_fields_containing_target(s_["ra"],s_["dec"])
+                       for i_,s_ in self.data.iterrows()]
+        self.data["fieldid"] = fieldid
+
     # ------- #
     # SETTER  #
     # ------- #
     def set_data(self, data):
-        """ """
+        """ attach to this instance the target data. 
+        = Most likely you should not use this method directly. =
+        use sample = Sample.load()
+        """
+        data["t0day"] = data["t0"].astype("int")
         self._data = data
 
     def set_hostdata(self, hostdata):
-        """ """
+        """ attach to this instance the host data.
+        = Most likely you should not use this method directly. =
+        use sample.load_hostdata() or simply 
+        sample.hostdata that automatically load this corrent hostdata.
+        """
         self._hostdata = hostdata
         
     def merge_to_data(self, dataframe, how="outer", **kwargs):
-        """ """
+        """ Merge the given dataframe with self.data. 
+        The merged dataframe will replace self.data
+        """
         self._data = pandas.merge(self.data, dataframe, how=how, 
                                  **{**dict(left_index=True, right_index=True),
                                  **kwargs})
@@ -74,7 +115,7 @@ class Sample():
                      redshift_range=None, z_quality=None,
                      t0_err_range=None, c_err_range=None, x1_err_range=None,
                      in_targetlist=None, goodcoverage=None, coverage_prop={},
-                     query=None):
+                     query=None, data=None):
         """ 
         *_range: [None or [min, max]] -optional-
             cut to be applied to the data for
@@ -107,15 +148,17 @@ class Sample():
             This are SQL-like format applied to the colums. 
             See pandas.DataFrame.query()
 
+
         Returns
         -------
         DataFrame (sub part or copy of self.data)
         """
+            
         if clean_t0nan:
             data = self.data[~self.data["t0"].isna()]
         else:
             data = self.data.copy()
-            
+        
         # - Time Range
         if t0_range is not None:
             t0_start = time.Time(t0_range[0]).mjd
@@ -173,12 +216,20 @@ class Sample():
             data = data.query(query)
             
         return data
-    
+
+    # LightCurve
     def get_target_lightcurve(self, name):
         """ Get the {name} LightCurve object """
         from . import lightcurve
         return lightcurve.LightCurve.from_name(name)
-    
+
+    # Spectrum
+    def get_target_spectra(self, name):
+        """ Get a list with all the Spectra for the given object """
+        from . import spectroscopy
+        return spectroscopy.Spectrum.from_name(name)
+
+    # Extra
     def get_goodcoverage_targets(self, n_early_points=">=2", n_late_points=">=5",
                                  n_points=">=10", n_bands=">=2",
                                premax_range=[-15,0],
@@ -231,7 +282,6 @@ class Sample():
         n_late_points_r = n_late_points_perfilter.xs("p48r", level=1).to_frame("n_late_points_p48r")
         n_late_points_i = n_late_points_perfilter.xs("p48i", level=1).to_frame("n_late_points_p48i")
             
-
         return pandas.concat([n_points,n_bands,
                               n_early_points,n_early_bands,n_late_points, n_late_bands,
                               n_early_points_g, n_early_points_r, n_early_points_i,
@@ -252,7 +302,7 @@ class Sample():
         datalc = self.get_data()
         datalc = datalc[datalc["redshift"].between(-0.1,0.2)]
 
-        warnings.warm("building phase coverage takes ~30s to 1min.")
+        warnings.warn("building phase coverage takes ~30s to 1min.")
         # - Without Dask
         if client is None:
             warnings.warn("loading without Dask (client is None) ; it will be slow")
@@ -292,14 +342,13 @@ class Sample():
     # ------- #
     # PLOTTER #
     # ------- #
-
-    
     def show_discoveryhist(self, ax=None, daymax=15, linecolor="C1", **kwargs):
         """ """
         from matplotlib.colors import to_rgba
         datasalt = self.get_data(clean_t0nan=True)
         
         if ax is None:
+            import matplotlib.pyplot as mpl
             fig = mpl.figure(figsize=[6,3])
             ax = fig.add_axes([0.1,0.2,0.8,0.7])
         else:
@@ -332,25 +381,38 @@ class Sample():
         return fig
     
     
-    def show_discoveryevol(self, ax=None, t0range=["2018-04-01","2021-01-01"],
+    def show_discoveryevol(self, ax=None, t0_range=["2018-04-01","2021-01-01"],
                            typed_color="C0", quality_color="goldenrod",
                            xformat=True, dataprop={}, 
                            **kwargs):
         """ """
         from matplotlib.colors import to_rgba
+
         # - Data    
-        datasalt_all = self.get_data(clean_t0nan=True, t0range=t0range, **dataprop)
-        datasalt_lccut = self.get_data(clean_t0nan=True, t0range=t0range, 
-                                        salt_quality=[3,7], **dataprop)    
-        datasalt_zcut = self.get_data(clean_t0nan=True, t0range=t0range, 
-                                        z_quality=2, **dataprop)    
-        datasalt_zcut_lccut = self.get_data(clean_t0nan=True, t0range=t0range, 
-                                        salt_quality=[3,7],
-                                        z_quality=2, **dataprop)    
+        datasalt_all = self.get_data(clean_t0nan=True, 
+                                        t0_range=t0_range,
+                                        **dataprop)
+        
+        datasalt_lccut = self.get_data(clean_t0nan=True,
+                                        t0_range=t0_range,
+                                        goodcoverage=True,
+                                        **dataprop)
+        
+        datasalt_zcut = self.get_data(clean_t0nan=True,
+                                        t0_range=t0_range, 
+                                        z_quality=2,
+                                        **dataprop)
+        
+        datasalt_zcut_lccut = self.get_data(clean_t0nan=True,
+                                        t0_range=t0_range, 
+                                        z_quality=2,
+                                        goodcoverage=True,
+                                        **dataprop)
 
-
+        
         # - Figue
         if ax is None:
+            import matplotlib.pyplot as mpl            
             fig = mpl.figure(figsize=[8,4])
             ax = fig.add_subplot(111)
         else:
