@@ -18,7 +18,7 @@ you need to have clone the [ZTF Interal datarelease](https://github.com/ZwickyTr
 
 # Usage
 
-Assuming your ZTFIDR repository is stored at a location provided in `$ZTFIDRPATH`:
+Assuming your `ztfcosmoidr/dr2` repository is stored at a location provided by `$ZTFIDRPATH`:
 ```python
 import ztfidr
 sample = ztfidr.get_sample() # UPDATE FOR YOUR CASE
@@ -35,7 +35,7 @@ and `sample.get_data()` you have many options like `x1_range`, `t0_range`, `reds
 </p>
 
 
-To visualise an in individual target (e.g. `ZTF19aampqcq`), do:
+To visualise an individual target lightcurve (e.g. `ZTF19aampqcq`), do:
 ```python
 lc = sample.get_target_lightcurve("ZTF19aampqcq")
 lc.show()
