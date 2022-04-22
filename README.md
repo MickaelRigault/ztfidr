@@ -41,7 +41,7 @@ lc = sample.get_target_lightcurve("ZTF19aampqcq")
 lc.show()
 ```
 <p align="left">
-  <img src="images/example_show_target.png" width="900" title="show_target">
+  <img src="images/example_show_target.png" width="500" title="show_target">
 </p>
 
 ***
@@ -52,13 +52,20 @@ host data are accessible using `io.get_host_data()` that returns a multi-index c
 
 the top-level columns are "2kpc", "4kpc" and "global".
 If you want the dataframe only for the "global" data, simply do:
+
 `global_host_data = host_data.xs("global", axis=1)` 
+
 same for "2kpc" local
+
 `local_host_data = host_data.xs("2kpc", axis=1)` 
+
 The "Direct Light Ratio" (dlr) corresponding to effective distance from the host center is inside the "global" columns as `host_dlr`.
 You can either access it as:
+
 `dlr = global_host_data["host_dlr"]`
+
 or directly from host_data as:
+
 `dlr = host_data.xs("host_dlr", axis=1, level=1)`
 
 *More functionalities are implemented, check ztfidr.get_hosts_data() etc.*
