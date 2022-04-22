@@ -26,7 +26,6 @@ def get_targets_data():
     # set index
     return data_.set_index("ztfname")
 
-
 def get_host_data():
     """ """
     hostmags = get_host_mags()
@@ -115,17 +114,21 @@ def get_host_mags(load=True, index_col=0, raw=False, **kwargs):
         if requested not in host_alldata:
             raise ValueError(f"Unknown entry: {requested} (which={which})")
 
-        host_data = host_alldata[requested].str.replace("nan", "np.nan")
-        host_err = host_alldata[requested+"_err"]
-        data = pandas.DataFrame(list(host_data.apply(eval)), index=host_data.index)
-        error = pandas.DataFrame(list(host_err.apply(eval)), index=host_err.index)
+        host_data = host_alldata[requested].astype(str).str.replace("nan", "np.nan").str.replace("inf", "np.nan").apply(eval)
+        host_err = host_alldata[requested+"_err"].astype(str).str.replace("nan", "np.nan").str.replace("inf", "np.nan").apply(eval)
+        flagna = host_data.isna() + host_err.isna()
+        data = pandas.DataFrame(list(host_data[~flagna]), index=host_data[~flagna].index)
+        error = pandas.DataFrame(list(host_err[~flagna]), index=host_err[~flagna].index)
         error.columns += "_err"
         return pandas.merge(data, error, left_index=True, right_index=True)
 
-    warnings.warn("no global host magnitude yet.")
     kpc2 = _get_split_(which="local_2kpc")
     kpc4 = _get_split_(which="local_4kpc")
-    hglobal = host_alldata[["z","host_dlr"]]
+    host_cat = _get_split_(which="host_cat")
+    hglobal = pandas.merge(host_cat,
+                          host_alldata[["z","host_dlr"]].rename({"z":"redshift"}, axis=1), 
+                          left_index=True, right_index=True,
+                               how="outer")
     return pandas.concat([kpc2, kpc4, hglobal], axis=1,
                           keys=["2kpc", "4kpc", "global"])
     
