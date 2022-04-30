@@ -160,13 +160,10 @@ class Spectrum( object ):
                         delta_phase=5, delta_redshift=None,
                         lbda_range=[4000, 8000], **kwargs):
         """ """
-        import pysnid
-        if self.filename is None:
-            raise NotImplementedError("No filename stored (self.filename is None). No work around implemented")
-            
-        return pysnid.run_snid(self.filename, redshift=redshift, phase=phase,
-                                   delta_phase=delta_phase, delta_redshift=delta_redshift,
-                                   lbda_range=lbda_range, **kwargs)
+        warnings.warn("DEPRECATED: use self.fit_snid() instead. This function redirect to it now. ")
+        return self.fit_snid(phase=phase, redshift=redshift,
+                                 delta_phase=delta_phase, delta_redshift=delta_redshift,
+                                 lbda_range=lbda_range, **kwargs)
 
     def get_redshift(self):
         """ """
@@ -175,6 +172,22 @@ class Spectrum( object ):
             return [np.nan, np.nan]
 
         return self.snidresult.get_redshift()
+
+    
+    # --------- #
+    #  FITTER   #
+    # --------- #
+    def fit_snid(self,  phase=None, redshift=None,
+                        delta_phase=5, delta_redshift=None,
+                        lbda_range=[4000, 8000], **kwargs):
+        """ """
+        import pysnid
+        if self.filename is None:
+            raise NotImplementedError("No filename stored (self.filename is None). No work around implemented")
+            
+        return pysnid.run_snid(self.filename, redshift=redshift, phase=phase,
+                                   delta_phase=delta_phase, delta_redshift=delta_redshift,
+                                   lbda_range=lbda_range, **kwargs)
     
     # --------- #
     # PLOTTER   #
