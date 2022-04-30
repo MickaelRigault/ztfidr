@@ -138,23 +138,19 @@ class Spectrum( object ):
     #  GETTER   #
     # --------- #
     def get_obsdate(self):
-        """ """
-        from astropy.time import Time
-        from datetime import datetime
-        if "date" not in self.meta.index or self.meta["date"] is None:
-            warnings.warn("Unknown date for the given spectrum")
-            return None
-        
-        return Time(datetime.strptime(self.meta["date"], '%Y%m%d'))
+        """ calls self.obsdate """
+        return self.obsdate
     
     def get_phase(self, t0, z=None):
         """ """
         obsdate = self.get_obsdate()
         if obsdate is None:
             return None
+        
         phase = obsdate.mjd-t0
         if z is not None:
             phase /=(1+z)
+            
         return phase
     
     def get_snidfit(self, phase=None, redshift=None,
@@ -281,6 +277,30 @@ class Spectrum( object ):
     def meta(self):
         """ """
         return self._meta
+
+    @property
+    def targetname(self):
+        """ name of the target (from self.meta). 
+        None if no meta or name not in meta"""
+        if self.meta is None:
+            return None
+        
+        return self.meta.get("name")
+
+    @property
+    def obsdate(self):
+        """ """
+        if self.meta is None:
+            return None
+        
+        if "date" not in self.meta.index or self.meta["date"] is None:
+            warnings.warn("Unknown date for the given spectrum")
+            return None
+
+        from astropy.time import Time
+        from datetime import datetime
+        return Time(datetime.strptime(self.meta["date"], '%Y%m%d'))
+
 
     @property
     def snidresult(self):
