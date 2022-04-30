@@ -167,7 +167,14 @@ class Spectrum( object ):
         return pysnid.run_snid(self.filename, redshift=redshift, phase=phase,
                                    delta_phase=delta_phase, delta_redshift=delta_redshift,
                                    lbda_range=lbda_range, **kwargs)
-    
+
+    def get_redshift(self):
+        """ """
+        if self.snidresult is None:
+            warnings.warn("snidres is not defined (None)")
+            return [np.nan, np.nan]
+
+        return self.snidresult.get_redshift()
     
     # --------- #
     # PLOTTER   #
@@ -324,13 +331,13 @@ class Spectra( object ):
         self._use_dask = use_dask
         
     @classmethod
-    def from_filenames(cls, filenames, use_dask=False):
+    def from_filenames(cls, filenames, use_dask=False, **kwargs):
         """ """
-        spectra = [Spectrum.from_filename(file_, use_dask=use_dask) for file_ in filenames]
+        spectra = [Spectrum.from_filename(file_, use_dask=use_dask, **kwargs) for file_ in filenames]
         return cls(spectra, use_dask=use_dask)
     
     @classmethod
-    def from_directory(cls, directory, contains=None, startswith=None, extension=".ascii", use_dask=False):
+    def from_directory(cls, directory, contains=None, startswith=None, extension=".ascii", use_dask=False, **kwargs):
         """ """
         from glob import glob
         glob_format = "*" if not startswith else f"{startswith}*"
@@ -340,7 +347,7 @@ class Spectra( object ):
             glob_format +=f"{extension}"
         spectrafiles = glob(os.path.join(directory, glob_format))
         
-        return cls.from_filenames(spectrafiles, use_dask=use_dask)
+        return cls.from_filenames(spectrafiles, use_dask=use_dask, **kwargs)
 
     # ================ #
     #    Method        #
@@ -369,6 +376,24 @@ class Spectra( object ):
             return np.asarray(self.spectra)[index]
         
         return self.spectra
+
+    def get_redshift(self):
+        """ """
+        DEFAULT = [np.NaN, np.NaN]
+        redshifts = np.asarray(self.call_down("get_redshift", True)).T
+        # Clear nans out
+        flagnan = np.any(np.isnan(redshifts), axis=0)
+        if np.all(flagnan):
+            return DEFAULT
+        
+        if np.any(flagnan):
+            redshifts = redshifts.T[~flagnan].T
+
+            
+        weights = 1/redshifts[1]**2
+        redshift = np.average(redshifts[0], weights=weights)
+        dredshift = np.sqrt(1/np.sum(weights))
+        return redshift, dredshift
         
     def show(self, ax=None, sortby="date", topfirst=True, legendprop={}, **kwargs):
         """ """

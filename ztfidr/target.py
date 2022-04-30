@@ -41,7 +41,7 @@ class Target():
         """ """
         self._lightcurve = lightcurve
         
-    def set_spectra(self, spectra, run_snid=True):
+    def set_spectra(self, spectra):
         """ """
         self._spectra = spectra   
     
@@ -108,6 +108,7 @@ class Target():
         if not self.has_spectra():
             warnings.warn("No spectra loaded.")
             return None
+        
         if not allow_run:
             snidres = [spec_.snidresult for spec_ in np.atleast_1d(self.spectra)]
             return snidres[0] if not self.has_multiple_spectra() else snidres

@@ -209,7 +209,7 @@ def parse_filename(file_s, snidres=False):
     Serie if single file, DataFrame otherwise
     """
 
-    index = ["name", "date", "telescope", "origin"]
+    index = ["name", "date", "telescope", "version"]
     fdata = []
     for file_ in np.atleast_1d(file_s):
         file_ = os.path.basename(file_).split(".ascii")[0]
