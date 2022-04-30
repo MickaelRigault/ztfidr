@@ -139,12 +139,13 @@ class Spectrum( object ):
     # --------- #
     def get_obsdate(self):
         """ """
-        from astropy.time import Time        
+        from astropy.time import Time
+        from datetime import datetime
         if "date" not in self.meta.index or self.meta["date"] is None:
             warnings.warn("Unknown date for the given spectrum")
             return None
         
-        return Time(self.meta["date"])
+        return Time(datetime.strptime(self.meta["date"], '%Y%m%d'))
     
     def get_phase(self, t0, z=None):
         """ """
