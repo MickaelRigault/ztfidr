@@ -15,16 +15,16 @@ __all__ = ["get_targets_data",
 # ================== #
 def get_targets_data():
     """ """
-    redshifts = get_redshif_data().reset_index()
-    salt2params = get_salt2params().reset_index()
-    coords = get_coords_data().reset_index()
+    redshifts = get_redshif_data()[["redshift","redshift_err", "redshift_source"]]
+    salt2params = get_salt2params()
+    coords = get_coords_data()
     # merging
-    data_ = pandas.merge(salt2params, redshifts, on=["redshift","ztfname"],
-                             how="outer")
-    data_ = pandas.merge(data_, coords, on=["ztfname"],
-                             how="outer")
+    data_ = pandas.merge(redshifts,salt2params, left_index=True, right_index=True,
+                     suffixes=("","_salt"), how="outer")
+    data_ = pandas.merge(data_, coords, left_index=True, right_index=True,
+                         how="outer")
     # set index
-    return data_.set_index("ztfname")
+    return data_
 
 def get_host_data():
     """ """
@@ -56,8 +56,19 @@ def get_redshif_data(load=True, index_col=0, **kwargs):
                             "ztfdr2_redshifts.csv")
     if not load:
         return filepath
-    return pandas.read_csv(filepath, index_col=index_col, **kwargs
-                          ).rename({"z":"redshift"}, axis=1)
+    
+    data = pandas.read_csv(filepath, index_col=index_col, **kwargs)
+    data.index.name = 'ztfname'
+    return data
+
+def get_snidauto_redshift(load=True, **kwargs):
+    """ """
+    filepath = os.path.join(IDR_PATH,"tables",
+                            "ancilliary_info","snidauto_redshift.csv")
+    if not load:
+        return filepath
+    return pandas.read_csv(filepath, index_col=0, **kwargs)
+
 
 # Coordinates
 def get_coords_data(load=True, index_col=0, **kwargs):

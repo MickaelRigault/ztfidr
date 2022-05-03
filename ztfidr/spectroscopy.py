@@ -5,6 +5,7 @@ import warnings
 from . import io
 
 SPEC_DATAFILE = io.get_spectra_datafile()
+TARGETS_DATA = io.get_targets_data()
 
 
 def read_spectrum(file_):
@@ -141,8 +142,24 @@ class Spectrum( object ):
         """ calls self.obsdate """
         return self.obsdate
     
-    def get_phase(self, t0, z=None):
-        """ """
+    def get_phase(self, t0=None, z=None, from_target=True):
+        """ t0, the phase=0 date, is expected to be in MJD. 
+        This returns phase=obsdate - t0
+        If z, the redshift is given, then phase/=(1+z) to have 
+        it in rest-frame.
+
+        if from_target, t0 and z are loaded from io.get_target_data()
+        """
+        # = Where does t0 come from ?
+        if from_target:
+            if self.targetname is None:
+                raise AttributeError("The targetname is unknown, self.targetname is None. You must provide t0 (and z) manually.")
+            t0, z = TARGETS_DATA.loc[self.targetname][["t0","redshift"]].values
+                
+        elif t0 is None:
+            raise ValueError("from_target is False and no t0 given.")
+
+        # = Ok, let's go.        
         obsdate = self.get_obsdate()
         if obsdate is None:
             return None
@@ -152,7 +169,7 @@ class Spectrum( object ):
             phase /=(1+z)
             
         return phase
-    
+
     def get_snidfit(self, phase=None, redshift=None,
                         delta_phase=5, delta_redshift=None,
                         lbda_range=[4000, 8000], **kwargs):
