@@ -230,7 +230,9 @@ class Sample():
         return spectroscopy.Spectrum.from_name(name)
 
     # Extra
-    def get_goodcoverage_targets(self, n_early_bands=">=2", n_late_bands=">=5",
+    def get_goodcoverage_targets(self,
+                                     n_early_bands=">=2",
+                                     n_late_bands=">=2",
                                        n_points=">=7",
                                        premax_range=[-15,0],
                                        postmax_range=[0,30],
