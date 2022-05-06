@@ -5,6 +5,10 @@ import warnings
 from . import io
 
 
+__all__ =["get_target_lightcurve"]
+
+
+
 ZTFCOLOR = { # ZTF
         "p48r":dict(marker="o",ms=7,  mfc="C3"),
         "p48g":dict(marker="o",ms=7,  mfc="C2"),
@@ -17,6 +21,11 @@ BAD_ZTFCOLOR = { # ZTF
         "p48i":dict(marker="o",ms=6,  mfc="None", mec="C1")
 }
 
+
+def get_target_lightcurve(name, load_salt2param=True, **kwargs):
+    """ """
+    return LightCurve.from_name(name, load_salt2param=load_salt2param, **kwargs)
+    
 # ================== #
 #                    #
 #   LIGHTCURVES      #
@@ -49,7 +58,7 @@ class LightCurve( object ):
     @classmethod
     def from_name(cls, targetname, use_dask=False, load_salt2param=True, **kwargs):
         """ """
-        filename = io.get_target_lc(targetname)            
+        filename = io.get_target_lc(targetname)
         this = cls.from_filename(filename, use_dask=use_dask, **kwargs)
         this._targetname = targetname
         if load_salt2param:
@@ -254,6 +263,7 @@ class LightCurve( object ):
     # --------- #
     def show(self, ax=None, figsize=None, zp=None, formattime=True, zeroline=True,
                  incl_salt2=True, autoscale_salt=True, clear_yticks=True,
+                 phase_range=[-30,100],
                  zprop={}, inmag=False, ulength=0.1, ualpha=0.1, notplt=False, **kwargs):
         """ """
         from matplotlib import dates as mdates
@@ -263,7 +273,7 @@ class LightCurve( object ):
         # - Axes Definition
         if ax is None:
             import matplotlib.pyplot as mpl
-            fig = mpl.figure(figsize=[7,4] if figsize is None else figsize)
+            fig = mpl.figure(figsize=[7,4])# if figsize is None else figsize)
             ax = fig.add_axes([0.1,0.15,0.8,0.75])
         else:
             fig = ax.figure
@@ -274,13 +284,21 @@ class LightCurve( object ):
         base_prop = dict(ls="None", mec="0.9", mew=0.5, ecolor="0.7", zorder=7)
         bad_prop  = dict(ls="None", mew=1, ecolor="0.7", zorder=6)        
         lineprop  = dict(color="0.7", zorder=1, lw=0.5)
-        
-        saltmodel = self.get_saltmodel() if incl_salt2 else None
+
+        if incl_salt2:
+            saltmodel = self.get_saltmodel()
+        else:
+             saltmodel = None
+             autoscale_salt = False
+             
         modeltime = self.salt2param.t0 + np.linspace(-15,50,100)
         t0 = self.salt2param.t0
-        timerange = [t0-30, t0+100]
-        lightcurves = self.get_lcdata(zp=zp, in_mjdrange=timerange)
-        
+        if phase_range is not None:
+            timerange = [t0-30, t0+100]
+        else:
+            timerange = None
+            
+        lightcurves = self.get_lcdata(zp=zp, in_mjdrange=timerange)        
         bands = np.unique(lightcurves["filter"])
         
         # flag goods
@@ -298,14 +316,17 @@ class LightCurve( object ):
             
             bdata = lightcurves[flagband]
             flag_good_ = flag_good[flagband]
-                
+            
             # IN FLUX
             if not inmag:
                 # - Data
                 datatime = Time(bdata["mjd"], format="mjd").datetime
                 y, dy = bdata["flux"], bdata["error"]
-                # - Salt                
-                saltdata = saltmodel.bandflux(band_, modeltime, zp=self.flux_zp, zpsys="ab") if saltmodel is not None else None
+                # - Salt
+                if saltmodel is not None:
+                    saltdata = saltmodel.bandflux(band_, modeltime, zp=self.flux_zp, zpsys="ab") if saltmodel is not None else None
+                else:
+                    saltdata = None
                     
             # IN MAG                                
             else:
@@ -316,8 +337,11 @@ class LightCurve( object ):
                 datatime = Time(bdata["mjd"], format="mjd").datetime
                 y, dy = bdata["mag"], bdata["mag_err"]
                 # - Salt
-                saltdata = saltmodel.bandmag(band_, "ab",modeltime) if saltmodel is not None else None
-                
+                if saltmodel is not None:
+                    saltdata = saltmodel.bandmag(band_, "ab",modeltime) if saltmodel is not None else None
+                else:
+                    saltdata = None
+            
             # -> good
             ax.errorbar(datatime[flag_good_],
                             y[flag_good_],  yerr=dy[flag_good_], 
@@ -330,12 +354,14 @@ class LightCurve( object ):
                             label=band_, 
                             **{**bad_prop, **BAD_ZTFCOLOR[band_],**kwargs}
                             )
-            ax.plot(Time(modeltime, format="mjd").datetime,
-                    saltdata,
-                    color=ZTFCOLOR[band_]["mfc"], zorder=5)
+        
+            if saltdata is not None:
+                ax.plot(Time(modeltime, format="mjd").datetime,
+                        saltdata,
+                        color=ZTFCOLOR[band_]["mfc"], zorder=5)
             
-            max_saltlc = np.max([max_saltlc, np.max(saltdata)])
-            min_saltlc = np.min([min_saltlc, np.min(saltdata)])
+                max_saltlc = np.max([max_saltlc, np.max(saltdata)])
+                min_saltlc = np.min([min_saltlc, np.min(saltdata)])
             
         if inmag:
             ax.invert_yaxis()
@@ -369,12 +395,12 @@ class LightCurve( object ):
                 ax.axes.yaxis.set_ticklabels([])
             
         if autoscale_salt:
-            ax.set_xlim(*Time(timerange,format="mjd").datetime)
+            if timerange is not None:
+                ax.set_xlim(*Time(timerange,format="mjd").datetime)
             if not inmag:
                 ax.set_ylim(bottom=-max_saltlc*0.25)
                 ax.set_ylim(top=max_saltlc*1.25)
             else:
-                print(min_saltlc)
                 ax.set_ylim(top=min_saltlc*0.95)
                     
         return fig

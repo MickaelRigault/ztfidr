@@ -230,17 +230,17 @@ class Sample():
         return spectroscopy.Spectrum.from_name(name)
 
     # Extra
-    def get_goodcoverage_targets(self, n_early_points=">=2", n_late_points=">=5",
-                                 n_points=">=10", n_bands=">=2",
-                               premax_range=[-15,0],
-                               postmax_range=[0,30],
-                               phase_range=[-15,30],
-                               **kwargs):
+    def get_goodcoverage_targets(self, n_early_bands=">=2", n_late_bands=">=5",
+                                       n_points=">=7",
+                                       premax_range=[-15,0],
+                                       postmax_range=[0,30],
+                                       phase_range=[-15,30],
+                                       **kwargs):
         """ kwargs should have the same format as the n_early_point='>=2' for instance.
         None means no constrain, like n_bands=None means 'n_bands' is not considered.
         """
-        query = {**dict(n_early_points=n_early_points, n_late_points=n_late_points,
-                        n_points=n_points,n_bands=n_bands),
+        query = {**dict(n_early_bands=n_early_bands, n_late_bands=n_late_bands,
+                        n_points=n_points),
                  **kwargs}
         df_query = " and ".join([f"{k}{v}" for k,v in query.items() if v is not None])
         phase_coverage = self.get_phase_coverage(premax_range=premax_range,

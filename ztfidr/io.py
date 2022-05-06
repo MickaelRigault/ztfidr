@@ -6,7 +6,6 @@ IDR_PATH = os.getenv("ZTFIDRPATH", "./dr2")
 
 __all__ = ["get_targets_data",
            "get_host_data",
-           "get_target_lc",
            "get_autotyping"]
 # ================== #
 #                    #
@@ -220,7 +219,7 @@ def parse_filename(file_s, snidres=False):
     Serie if single file, DataFrame otherwise
     """
 
-    index = ["name", "date", "telescope", "version"]
+    index = ["ztfname", "date", "telescope", "version"]
     fdata = []
     for file_ in np.atleast_1d(file_s):
         file_ = os.path.basename(file_).split(".ascii")[0]
