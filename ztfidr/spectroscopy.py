@@ -72,7 +72,7 @@ class Spectrum( object ):
     def from_name(cls, targetname, as_spectra=False, use_dask=False,
                       load_snidres=True, **kwargs):
         """ """        
-        fullpath = SPEC_DATAFILE[SPEC_DATAFILE["name"]==targetname]["fullpath"].values
+        fullpath = SPEC_DATAFILE[SPEC_DATAFILE["ztfname"]==targetname]["fullpath"].values
         if len(fullpath)==0:
             warnings.warn(f"No spectra target names {targetname}")
             return None
@@ -303,7 +303,7 @@ class Spectrum( object ):
         if self.meta is None:
             return None
         
-        return self.meta.get("name")
+        return self.meta.get("ztfname")
 
     @property
     def obsdate(self):
