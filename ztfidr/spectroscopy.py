@@ -93,18 +93,26 @@ class Spectrum( object ):
         """ """
         if os.path.isfile(fileout) and not overwrite:
             raise IOError("fileout already exists. Set overwrite=True to overwrite it.")
-        
+
+        nlbda = len(self.lbda)
         with open(fileout,"w") as file:
             if self.header is not None:
                 for i_,s_ in self.header.iteritems():
                     file.write(f"# {i_}: {s_}\n")
                 
             if self.has_variance():
-                for w_,f_,v_ in zip(self.lbda, self.flux, self.variance):
-                    file.write(f"{w_} {f_} {v_}\n")
+                for i_,(w_,f_,v_) in enumerate(zip(self.lbda, self.flux, self.variance)):
+                    file.write(f"{w_} {f_} {v_}")
+                    if not i_ == nlbda-1:
+                        file.write("\n")
+                        
             else:
-                for w_,f_ in zip(self.lbda, self.flux):
-                    file.write(f"{w_} {f_}\n")            
+                for i_,(w_,f_) in enumerate(zip(self.lbda, self.flux)):
+                    file.write(f"{w_} {f_}")
+                    if not i_ == nlbda-1:
+                        file.write("\n")
+
+                    
     # ================ #
     #    Method        #
     # ================ #
