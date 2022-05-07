@@ -87,7 +87,24 @@ class Spectrum( object ):
             return [cls.from_filename(file_, use_dask=use_dask, load_snidres=load_snidres,
                                          **kwargs)
                         for file_ in fullpath]
+
+
+    def store(self, fileout=None, overwrite=False):
+        """ """
+        if os.path.isfile(fileout) and not overwrite:
+            raise IOError("fileout already exists. Set overwrite=True to overwrite it.")
         
+        with open(fileout,"w") as file:
+            if self.header is not None:
+                for i_,s_ in self.header.iteritems():
+                    file.write(f"# {i_}: {s_}\n")
+                
+            if self.has_variance():
+                for w_,f_,v_ in zip(self.lbda, self.flux, self.variance):
+                    file.write(f"{w_} {f_} {v_}\n")
+            else:
+                for w_,f_ in zip(self.lbda, self.flux):
+                    file.write(f"{w_} {f_}\n")            
     # ================ #
     #    Method        #
     # ================ #

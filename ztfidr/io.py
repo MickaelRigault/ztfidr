@@ -230,7 +230,7 @@ def parse_filename(file_s, snidres=False):
             try:
                 name, date, *telescope, origin = file_.split("_")
             except:
-                print(f"failed for {file_}")
+                print(f"failed parsing filename for {file_}")
                 continue
 
         telescope = "_".join(telescope)
