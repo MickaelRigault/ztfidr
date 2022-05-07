@@ -8,7 +8,7 @@ SPEC_DATAFILE = io.get_spectra_datafile()
 TARGETS_DATA = io.get_targets_data()
 
 
-def read_spectrum(file_):
+def read_spectrum(file_, sep=None):
     """ """
     data = open(file_).read().splitlines()
     try:
@@ -17,8 +17,9 @@ def read_spectrum(file_):
                               columns=["keys", "values"]).set_index("keys")["values"]
     except:
         raise IOError(f"header build Fails for {file_}")
+    
     try:
-        lbda, flux, *variance = np.asarray([d.split() for d in data 
+        lbda, flux, *variance = np.asarray([d.split(sep) for d in data 
                                         if not (d.startswith("#") 
                                                 or d.startswith("COMMENT") or d.startswith("HISTORY")
                                                 or "=" in d or ":" in d) and len(d.split())>=2]).T
@@ -50,12 +51,12 @@ class Spectrum( object ):
         
     @classmethod
     def from_filename(cls, filename, use_dask=False, snidresult=None,
-                          load_snidres=True, **kwargs):
+                          load_snidres=True, sep=None, **kwargs):
         """ 
         load_snidres: fetch for snidresults and loads it if it exists.
         """
         if not use_dask:
-            header, data = read_spectrum(filename)
+            header, data = read_spectrum(filename, sep=sep)
         else:
             from dask import delayed
             header_data = delayed(read_spectrum)(filename)
