@@ -31,6 +31,8 @@ def read_spectrum(file_, sep=None):
     return header, data
 
 
+
+
 class Spectrum( object ):
     """ """
     def __init__(self, data, header=None, meta=None, use_dask=False, snidresult=None,

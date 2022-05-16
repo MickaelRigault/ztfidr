@@ -199,6 +199,56 @@ class LightCurve( object ):
         return lcdata
 
 
+    def get_model_residual(self, model=None, modelprop={}, 
+                           intrinsic_error=None,
+                           **kwargs):
+        """ get a dataframe with lightcurve data, model and residuals information.
+
+        Parameters
+        ----------
+        model: [sncosmo.Model or None] -optional-
+            provide the sncosmo model from which the model flux can be obtained.
+            If None given [default] this method will call self.get_saltmodel().
+
+        modelprop: [dict] -optional-
+            kwarg information passed to model.set() to change the default model parameters.
+            = This is only used in model=None = 
+            It aims at updating model given by self.get_saltmodel()
+            
+        intrinsic_error: [float] -optional-
+            provide an intrinsic error for the lightcurve. This will be stored as 'error_int'
+            in the returned DataFrame. 
+            The 'pull' will use the quadratic sum of error and error_int to be calculated.
+            if None given [default] this will assume 0.
+
+        
+        **kwargs goes to get_lcdata()
+
+        Returns
+        -------
+        DataFrame
+        """
+        basedata = self.get_lcdata(**kwargs)[["mjd","flux", "error","phase", "filter","flag"]]
+        if model is None:
+            model = self.get_saltmodel()
+            if modelprop is not None:
+                # Does nothing is no kwargs
+                model.set(**modelprop) 
+
+        # Model
+        basedata["model"] = model.bandflux(basedata["filter"], basedata["mjd"], 
+                                            zp=self.flux_zp, zpsys="ab")
+        # Residual    
+        basedata["residual"] = basedata["flux"] - basedata["model"]
+
+        # Error    
+        basedata["error_int"] = intrinsic_error if intrinsic_error is not None else 0
+        total_error = np.sqrt(basedata["error"]**2 + basedata["error_int"]**2)
+        # Pull    
+        basedata["pull"] = basedata["residual"]/total_error
+        return basedata
+
+    
     def get_sncosmotable(self, min_detection=5,  phase_range=[-10,30], filters=["p48r","p48g"], **kwargs):
         """ """
         from .utils import mag_to_flux
