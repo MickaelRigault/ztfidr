@@ -232,7 +232,7 @@ class LightCurve( object ):
         if model is None:
             model = self.get_saltmodel()
             if modelprop is not None:
-                # Does nothing is no kwargs
+                # Does nothing if empty dict
                 model.set(**modelprop) 
 
         # Model
