@@ -6,6 +6,7 @@ IDR_PATH = os.getenv("ZTFIDRPATH", "./dr2")
 
 __all__ = ["get_targets_data",
            "get_host_data",
+           "get_localhost_data",           
            "get_autotyping"]
 # ================== #
 #                    #
@@ -25,12 +26,22 @@ def get_targets_data():
     # set index
     return data_
 
-def get_host_data():
+def get_localhost_data(local_nkpc=2, which="mag"):
     """ """
-    hostmags = get_host_mags()
+    hostlocal = get_host_local(nkpc=2, which="mag")
     hostcoords = get_host_coords()
-    return pandas.merge( pandas.concat([hostcoords], keys=["global"], axis=1), # multi index
-                         hostmags, left_index=True, right_index=True, how="outer")
+    dlr = get_host_mags().xs("global", axis=1)["host_dlr"]
+    hostcoords = hostcoords.merge(dlr, left_index=True, right_index=True)
+    return hostcoords.merge(hostlocal, left_index=True, right_index=True,
+                                how="left")
+
+def get_host_data(local_nkpc=2, which="mag"):
+    """ """
+    hostmag = get_host_mags().xs("global", axis=1)
+    hostcoords = get_host_coords()
+    return hostcoords.merge(hostmag, left_index=True, right_index=True,
+                                how="left")
+                                
 
 # ================== #
 #                    #
@@ -81,7 +92,8 @@ def get_coords_data(load=True, index_col=0, **kwargs):
 # SALT
 def get_salt2params(load=True, default=True, **kwargs):
     """ """
-    filename = "ztfdr2_salt2_params.csv" if default else "ztfdr2_salt2_params_phase-15to30_color-0.4to0.8.csv"
+    filename = "ztfdr2_salt2_params.csv" if default else\
+      "ztfdr2_salt2_params_phase-15to30_color-0.4to0.8.csv"
     filepath = os.path.join(IDR_PATH, "tables",
                                 filename)
 
@@ -107,6 +119,28 @@ def get_host_coords(load=True, **kwargs):
     
     return pandas.read_csv(filepath, **{**dict(sep=" "),**kwargs}).set_index("ztfname")
 
+def get_host_local(nkpc=2, which="mag", load=True, **kwargs):
+    """ """
+    filepath = os.path.join(IDR_PATH, "tables",
+                            f"ancilliary_info/host_photometry/ztfdr2_local{nkpc}kpc_{which}.csv")
+    if not load:
+        return filepath
+    if not os.path.isfile(filepath):
+        raise IOError(f"no such file {filepath}")
+
+    return pandas.read_csv(filepath, index_col=0, **kwargs)
+
+def get_host_sedfit(nkpc=2, load=True, **kwargs):
+    """ """
+    filepath = os.path.join(IDR_PATH, "tables",
+                            f"ancilliary_info/host_properties/ztfdr2_local{nkpc}kpc_sedfit.csv")
+    if not load:
+        return filepath
+    if not os.path.isfile(filepath):
+        raise IOError(f"no such file {filepath}")
+
+    return pandas.read_csv(filepath, index_col=0, **kwargs)
+    
 
 def get_host_mags(load=True, index_col=0, raw=False, **kwargs):
     """ """

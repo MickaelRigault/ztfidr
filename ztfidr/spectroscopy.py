@@ -7,6 +7,15 @@ from . import io
 SPEC_DATAFILE = io.get_spectra_datafile()
 TARGETS_DATA = io.get_targets_data()
 
+__all__ = ["get_target_spectra"]
+
+def get_target_spectra(name, load_snidres=True, **kwargs):
+    """ load the lightcurve object for the given target. """
+    return np.atleast_1d(Spectrum.from_name(name, load_snidres=load_snidres,
+                                            **kwargs)
+                        )
+
+
 
 def read_spectrum(file_, sep=None):
     """ """

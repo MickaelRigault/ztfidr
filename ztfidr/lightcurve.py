@@ -23,7 +23,7 @@ BAD_ZTFCOLOR = { # ZTF
 
 
 def get_target_lightcurve(name, load_salt2param=True, **kwargs):
-    """ """
+    """ load the lightcurve object for the given target. """
     return LightCurve.from_name(name, load_salt2param=load_salt2param, **kwargs)
     
 # ================== #
@@ -33,9 +33,11 @@ def get_target_lightcurve(name, load_salt2param=True, **kwargs):
 # ================== #
     
 class LightCurve( object ):
-    """ """
+
     def __init__(self, data, meta=None, salt2param=None, use_dask=False):
-        """ """
+        """ likely, this is not how you should load the data. 
+        See from_name() or from_filename() class methods.
+        """
         self.set_data(data)
         self.set_meta(meta)
         self.set_salt2param(salt2param)
@@ -43,7 +45,7 @@ class LightCurve( object ):
         
     @classmethod
     def from_filename(cls, filename, use_dask=False):
-        """  """
+        """  load a Lightcurve object from a given file. """
         if use_dask:
             from dask import delayed
             # This is faster than dd.read_cvs and does what we need here
