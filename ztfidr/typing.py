@@ -89,21 +89,47 @@ class Classifications( _DBApp_ ):
     # GETTER   #
     # -------- #
     def get_data(self, incl_unclear=True, min_classification=None,
+                     types=None, 
                      goodcoverage=None, redshift_range=None,
                      x1_range=None, c_range=None, **kwargs):
         """ 
 
-        min_classification: [None or int]
-            minimum number of typing for this target. 
-            unclear are not counted.
+        incl_unclear: [bool] -optional-
+            should the unclear typing be included ?
 
+        min_classification: [None or int] -optional-
+            minimum number of typing for this target. 
+            'unclear' are not counted as classifications
+            (this uses self.get_ntyped()) 
+
+
+        goodcoverage: [None or bool] -optional-
+            # sample.get_data() options
+            should we only use target with good lightcurve sampling ?
+            - None: no selection
+            - True: only good sampling targets
+            - False: only bad sample targets
+            
+        redshift_range, x1_range, c_range: [None or [min, max] ] -optional-
+            # sample.get_data() options
+            range to limit redshift, x1 or c, respectively
+        
+        **kwargs goes to self.sample.get_data()
+
+        Returns
+        -------
+        DataFrame
         """
         data = self.data.copy()
         if not incl_unclear:
             data = data[data["value"] != "unclear"]
+            
         if min_classification is not None and min_classification>0:
             ntyped = self.get_ntyped(incl_unclear=False)
             data = data[data["target_name"].isin(ntyped[ntyped>=min_classification].index)]
+            
+        if types is not None:
+            data = data[data["value"].isin(np.atleast_1d(types))]
             
         # Sample
         _locals = locals()
@@ -117,9 +143,6 @@ class Classifications( _DBApp_ ):
             data = data[data["target_name"].isin(names_to_keep)]
             
         return data
-        
-        
-            
 
     def get_ntyped(self, incl_unclear=False):
         """ series of the n"""
@@ -131,7 +154,7 @@ class Classifications( _DBApp_ ):
     
     def get_of_types(self, types):
         """ get entry associated to the given type (lower case) """
-        return self.data[self.data["value"].isin(np.atleast_1d(types))]
+        return 
                          
     def get_nonia(self, incl_unclear=False):
         """ """
@@ -178,3 +201,15 @@ class Classifications( _DBApp_ ):
             self.load_sample()
             
         return self._sample
+
+    
+    @property
+    def types(self):
+        """ list of all possible types"""
+        return self.data["value"].unique()
+
+    @property
+    def ia_types(self):
+        """ list of all possible types"""
+        alltypes = self.types
+        return alltypes[["ia" in _ and _ !="not ia" for _ in alltypes ]]
