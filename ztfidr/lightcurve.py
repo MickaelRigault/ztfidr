@@ -411,7 +411,7 @@ class LightCurve( object ):
                 ax.plot(Time(modeltime, format="mjd").datetime,
                         saltdata,
                         color=ZTFCOLOR[band_]["mfc"], zorder=5)
-            
+
                 max_saltlc = np.max([max_saltlc, np.max(saltdata)])
                 min_saltlc = np.min([min_saltlc, np.min(saltdata)])
             
@@ -453,7 +453,10 @@ class LightCurve( object ):
                 ax.set_ylim(bottom=-max_saltlc*0.25)
                 ax.set_ylim(top=max_saltlc*1.25)
             else:
-                ax.set_ylim(top=min_saltlc*0.95)
+                if np.isinf(min_saltlc) or np.isnan(min_saltlc):
+                    ax.set_ylim(23, 14)
+                else:
+                    ax.set_ylim(top=min_saltlc*0.95)
                     
         return fig
     
