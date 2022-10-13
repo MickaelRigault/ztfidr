@@ -13,6 +13,25 @@ import sqlite3
 con = sqlite3.connect(DB_PATH)
 
 
+SORT_FAVORED = ["not ia","ib/c","ii","gal", "other",
+                "sn ia","ia-norm",
+                "ia-91bg", "ia-91t", "ia-other"]
+
+def get_typing(typings_values, 
+               sort_favored=SORT_FAVORED):
+    """ """
+    typings, values = typings_values
+    typings[values==values.max()]
+    if len(typings)  == 1:
+        return typings[0]
+    
+    ltypings = list(typings)
+    ltypings.sort(key = lambda i: sort_favored.index(i))
+    return ltypings[0]
+
+
+
+
 class _DBApp_():
     _DB_NAME = None
 
@@ -163,14 +182,27 @@ class Classifications( _DBApp_ ):
             list_to_get+="unclear"
             
         return self.data[self.data["value"].isin(list_to_get)]
+
+
+    def get_classification(self, sort_favored=SORT_FAVORED):
+        """ """
+        data = self.get_data(incl_unclear=False)
+        typings = data.groupby(["target_name"])["value"].apply(list).apply(np.unique, return_counts=True)
+        return typings.apply(get_typing, sort_favored=sort_favored)
+
         
     # -------- #
     # PLOTTER  #
     # -------- #
-    def show_classifications(self, ax=None, fig=None):
+    def show_classifications(self, ax=None, fig=None, 
+                                 classifications=None, per_target=True):
         """ """
-        ndatas = self.data.groupby(["value"]).size().sort_values()
-        
+        if classifications is not None:
+            ndatas = classifications.value_counts().sort_values()
+        elif per_target:
+            ndatas = self.get_classification().value_counts().sort_values()
+        else:
+            ndatas = self.data.groupby(["value"]).size().sort_values()
         
         if ax is None:
             if fig is None:

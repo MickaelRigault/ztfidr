@@ -23,7 +23,9 @@ def get_targets_data():
                      suffixes=("","_salt"), how="outer")
     data_ = pandas.merge(data_, coords, left_index=True, right_index=True,
                          how="outer")
-    # set index
+    # force limit to target to use
+    # target_list = get_targetlist()
+    # data_ = data_.loc[target_list]
     return data_
 
 def get_localhost_data(local_nkpc=2, which="mag"):
@@ -48,6 +50,14 @@ def get_host_data(local_nkpc=2, which="mag"):
 #   BASICS           #
 #                    #
 # ================== #
+def get_targetlist(load=True, **kwargs):
+    """ official list of target to use for dr2 """
+    filepath = os.path.join(IDR_PATH, "tables",
+                            "ztfdr2_targetlist.csv")
+    if not load:
+        return filepath
+    
+    return pandas.read_csv(filepath, **kwargs)
 
 # Master List
 def get_masterlist(load=True, **kwargs):

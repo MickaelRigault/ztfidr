@@ -5,9 +5,9 @@ import pandas
 from . import io
 from astropy import time
         
-def get_sample():
+def get_sample(**kwargs):
     """ Short to to Sample.load() """
-    return Sample.load()
+    return Sample.load(**kwargs)
 
 
 class Sample():
@@ -17,9 +17,15 @@ class Sample():
         self.set_data(data)
     
     @classmethod
-    def load(cls, default_salt2=True):
+    def load(cls, redshift_range=None, target_list=None):
         """ Load a Sample instance building it from io.get_targets_data() """
         data = io.get_targets_data()
+        if redshift_range is not None:
+            data = data[data["redshift"].between(*redshift_range)]
+
+        if target_list is not None:
+            data = data.loc[target_list]
+            
         return cls(data=data)
 
     # ------- #
@@ -28,10 +34,37 @@ class Sample():
     def load_hostdata(self):
         """ load the host data using io.get_host_data(). This is made automatically upon hostdata call. """
         self.set_hostdata( io.get_host_data() )
+
+    def load_spectra_df(self, add_phase=True, current_target=True):
+        """ load the spectra dataframe 
+
+        Parameters
+        ----------
+        add_phase: bool
+            should the phase (based on spectra date and the target t0) be added
+
+        current_target: bool
+            only keep target that are in the current sample.
         
-    def load_phasedf(self, min_detection=5, groupby='filter', client=None, rebuild=False, **kwargs):
-        """ Load the phasedf. This is made automatically upton phasedf call.
-        If this is the first time ever you call this, the phasedf has to be built, so it takes ~45s.
+        Returns
+        -------
+        None
+            sets self.spectra_df
+        """
+        spectra_df = io.get_spectra_datafile().set_index("ztfname")
+        if current_target:
+            spectra_df = spectra_df.loc[spectra_df.index.isin( self.data.index )]
+            
+        spectra_df["mjd"] = time.Time(np.asarray(spectra_df["date"].apply(lambda x: f"{x[:4]}-{x[4:6]}-{x[6:]}").astype(str).values, dtype="str")).mjd
+        if add_phase:
+            spectra_df = spectra_df.join( self.data["t0"] )
+            spectra_df["phase"] = spectra_df["mjd"] - spectra_df["t0"]
+
+        self._spectra_df = spectra_df
+        
+    def load_phase_df(self, min_detection=5, groupby='filter', client=None, rebuild=False, **kwargs):
+        """ Load the phase_df. This is made automatically upton phase_df call.
+        If this is the first time ever you call this, the phase_df has to be built, so it takes ~45s.
         Once built, the dataframe is stored such that, next time, it is directly loaded. 
         Use rebuild=True to bypass the automatic loading and rebuild the dataframe.
         
@@ -58,15 +91,15 @@ class Sample():
         None
         """
         if not rebuild:
-            phasedf = io.get_phase_coverage(load=True, warn=False)
-            if phasedf is None:
+            phase_df = io.get_phase_coverage(load=True, warn=False)
+            if phase_df is None:
                 rebuild = True
                 
         if rebuild:
-            phasedf = self.build_phase_coverage(min_detection=min_detection,
+            phase_df = self.build_phase_coverage(min_detection=min_detection,
                                                     groupby=groupby,
                                                     client=client, store=True, **kwargs)
-        self._phasedf = phasedf
+        self._phase_df = phase_df
 
     def load_fiedid(self):
         """ compute the fields containing the targets using 
@@ -111,11 +144,13 @@ class Sample():
     # GETTER  #
     # ------- #
     def get_data(self, clean_t0nan=True,
-                     t0_range=None,  x1_range=None, c_range=None,
-                     redshift_range=None, z_quality=None,
+                     t0_range=None, x1_range=None, c_range=None,
+                     redshift_range=None, z_quality=None, redshift_source=None,
                      t0_err_range=None, c_err_range=None, x1_err_range=None,
-                     in_targetlist=None, goodcoverage=None, coverage_prop={},
-                     query=None, data=None):
+                     exclude_targets=None, in_targetlist=None,
+                     ndetections=None,
+                     goodcoverage=None, coverage_prop={},
+                     first_spec_phase=None, query=None, data=None):
         """ 
         *_range: [None or [min, max]] -optional-
             cut to be applied to the data for
@@ -127,7 +162,6 @@ class Sample():
         t0_range: [None or [tmin,tmax]] -optional-
             Should be a format automatically understood by astropy.time.Time
             e.g. t0_range=["2018-04-01","2020-10-01"]
-
 
         in_targetlist: [list of strings] -optional-
             The target must be in this list
@@ -193,6 +227,9 @@ class Sample():
             data = data[data["redshift"].between(*redshift_range)]
             
         # -  redshift origin
+        if redshift_source is not None:
+            data = data[data["redshift"].isin(*np.atleast_1d(redshift_source))]
+            
         if z_quality is not None and z_quality not in ["any","all","*"]:
             data = data[data["z_quality"].isin(np.atleast_1d(z_quality))]
 
@@ -201,6 +238,16 @@ class Sample():
         if in_targetlist is not None:
             data = data.loc[np.asarray(in_targetlist)[np.in1d(in_targetlist, data.index.astype("string"))] ]
 
+        if exclude_targets is not None:
+            data = data.loc[~data.index.isin(exclude_targets)]
+
+
+        # LC Coverage
+        if ndetections is not None:
+            phase_coverage = self.get_phase_coverage()["n_points"]
+            min_corevarge = phase_coverage[phase_coverage>=ndetections]
+            data = data.loc[data.index.isin(min_corevarge.index)]
+            
         # - special good lc list.            
         if goodcoverage is not None:
             good_covarege_targets = self.get_goodcoverage_targets(**coverage_prop)
@@ -210,6 +257,12 @@ class Sample():
                 data = data.loc[flag_goodcoverage]
             else:
                 data = data.loc[~flag_goodcoverage]
+
+        # Spectral Cut.
+        if first_spec_phase is not None:
+            first_spec = self.spectra_df.groupby(level=0).phase.first()
+            first_spec = first_spec[first_spec<=first_spec_phase]
+            data = data.loc[data.index.isin(first_spec.index)]
 
         # Additional Query
         if query:
@@ -256,13 +309,13 @@ class Sample():
                                 phase_range=[-15,30], min_det_perband=1):
         """ """        
         # All
-        phases = self.phasedf[self.phasedf.between(*phase_range)].reset_index().rename({"level_0":"name"},axis=1)
+        phases = self.phase_df[self.phase_df.between(*phase_range)].reset_index().rename({"level_0":"name"},axis=1)
         n_points = phases.groupby(["name"]).size().to_frame("n_points")
         n_bands = (phases.groupby(["name", "filter"]).size()>=min_det_perband
                         ).groupby(level=[0]).sum().to_frame("n_bands")
         # Pre-Max
         # - AnyBand
-        premax = self.phasedf[self.phasedf.between(*premax_range)].reset_index().rename({"level_0":"name"},axis=1)
+        premax = self.phase_df[self.phase_df.between(*premax_range)].reset_index().rename({"level_0":"name"},axis=1)
         n_early_points = premax.groupby(["name"]).size().to_frame("n_early_points")
         n_early_bands = (premax.groupby(["name", "filter"]).size()>=min_det_perband
                         ).groupby(level=[0]).sum().to_frame("n_early_bands")
@@ -274,7 +327,7 @@ class Sample():
         
         # Post-Max
         # - AnyBand        
-        postmax = self.phasedf[self.phasedf.between(*postmax_range)].reset_index().rename({"level_0":"name"},axis=1)
+        postmax = self.phase_df[self.phase_df.between(*postmax_range)].reset_index().rename({"level_0":"name"},axis=1)
         n_late_points = postmax.groupby(["name"]).size().to_frame("n_late_points")
         n_late_bands = (postmax.groupby(["name", "filter"]).size()>=min_det_perband
                        ).groupby(level=[0]).sum().to_frame("n_late_bands")
@@ -318,7 +371,7 @@ class Sample():
                     warnings.warn(f"get_obsphase did not work for {name}")
                     continue
                 
-            phasedf = pandas.concat(phases, keys=names_ok)
+            phase_df = pandas.concat(phases, keys=names_ok)
 
         # - With Dask
         else:
@@ -331,19 +384,79 @@ class Sample():
             data_ = client.gather(fphases, "skip") # wait until all is done
             names = datalc.index[[i for i,f_ in enumerate(fphases) if f_.status=="finished"]]
             
-            phasedf = pandas.concat(data_, keys=names)
+            phase_df = pandas.concat(data_, keys=names)
 
-        phasedf_exploded = phasedf.explode()
+        phase_df_exploded = phase_df.explode()
         if store:
             filepath = io.get_phase_coverage(load=False)
-            phasedf_exploded.to_csv(filepath)
+            phase_df_exploded.to_csv(filepath)
             
-        return phasedf_exploded
+        return phase_df_exploded
     
     
     # ------- #
     # PLOTTER #
     # ------- #
+    def show_ideogram(self, key, keyerr=None,
+                          ax=None, data=None, dataprop={},
+                          facecolor=None, edgecolor=None, lw=2,
+                          nsigma_range=3, npoints=1000,
+                          density=False, normed_one=False,
+                          **kwargs):
+        """ """
+        from matplotlib.colors import to_rgba
+        from scipy import stats
+
+        # axes
+        if ax is None:
+            import matplotlib.pyplot as mpl
+            fig = mpl.figure(figsize=[6,3])
+            ax = fig.add_axes([0.1,0.2,0.8,0.7])
+        else:
+            fig = ax.figure
+
+        # data            
+        if keyerr is None:
+            keyerr = key+"_err"
+
+        if data is None:
+            data = self.get_data(**dataprop)
+
+        # getting the x and y            
+        d, d_err = data[[key, keyerr]].values.T
+        d_range = np.nanmin(d-nsigma_range*d_err), np.nanmax(d+nsigma_range*d_err)
+        dd = np.linspace(*d_range, npoints)
+        dideo = np.sum(stats.norm.pdf(dd[:,None],
+                                      loc=d, scale=d_err), 
+                           axis=1)
+        
+        # plotting properties
+        if facecolor is None:
+            facecolor = to_rgba("C0",0.3)
+            facecolor_ = "C0"
+        else:
+            facecolor_ = facecolor
+            
+        if edgecolor is None:
+            edgecolor = to_rgba(facecolor_, 1)
+
+
+        if density:
+            dideo /= np.nansum(dideo)
+            
+        if normed_one:
+            dideo /= np.nanmax(dideo)
+            
+        # plot
+        _ = ax.fill_between(dd, dideo, 
+                                facecolor=facecolor, 
+                                edgecolor=edgecolor, lw=lw,
+                                **kwargs)
+        
+        # fancy
+        ax.set_ylim(0)
+        return fig
+    
     def show_discoveryhist(self, ax=None, daymax=15, linecolor="C1", **kwargs):
         """ """
         from matplotlib.colors import to_rgba
@@ -499,9 +612,17 @@ class Sample():
 
 
     @property
-    def phasedf(self):
+    def phase_df(self):
         """ """
-        if not hasattr(self, "_phasedf"):
-            self.load_phasedf()
+        if not hasattr(self, "_phase_df"):
+            self.load_phase_df()
         
-        return self._phasedf
+        return self._phase_df
+
+    @property
+    def spectra_df(self):
+        """ dataframe containing the spectral information """
+        if not hasattr(self, "_spectra_df"):
+            self.load_spectra_df()
+        
+        return self._spectra_df
