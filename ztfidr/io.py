@@ -8,6 +8,7 @@ __all__ = ["get_targets_data",
            "get_host_data",
            "get_localhost_data",           
            "get_autotyping"]
+    
 # ================== #
 #                    #
 #   TOP LEVEL        #
@@ -64,15 +65,22 @@ def get_targetlist(load=True, **kwargs):
     
     return pandas.read_csv(filepath, **kwargs)
 
-def get_target_typing(load=True, index_col=0, sep=" ", **kwargs):
+def get_target_typing(load=True, index_col=0, sep=" ",
+                          clean=True, **kwargs):
     """ """
     filepath = os.path.join(IDR_PATH, "tables",
                             "ztfdr2_typing.csv")
     if not load:
         return filepath
     
-    return pandas.read_csv(filepath, index_col=index_col, sep=sep, **kwargs)
-    
+    data = pandas.read_csv(filepath, index_col=index_col, sep=sep, **kwargs)
+    if clean:
+        data["typing"] = data["typing"].str.replace("[","", regex=False).str.replace("]","", regex=False).str.replace("'","") # clean
+        data["typing"] = data["typing"].str.replace("sn ia", "snia").str.replace("not ia", "notia")
+        data["typing"] = data["typing"].str.split(" ")
+        
+        data["ntypings"] = data["ntypings"].str.replace("[","", regex=False).str.replace("]","", regex=False).str.split(" ")
+    return data
 
 # Master List
 def get_masterlist(load=True, **kwargs):
