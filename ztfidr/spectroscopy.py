@@ -289,6 +289,9 @@ class Spectrum( object ):
         ax.set_xlabel(r"Wavelength [$\AA$]")
         if legend:
             ax.legend(loc="best", frameon=False, fontsize="small")
+
+        if savefile:
+            fig.savefig(savefile, dpi=150)
             
         return fig
 

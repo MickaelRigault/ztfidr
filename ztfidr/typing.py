@@ -31,6 +31,62 @@ def get_typing(typings_values,
 
 
 
+def parse_classification(line, 
+                         min_review=2,
+                         min_autotyping=3, 
+                         min_generic_typing=4,
+                         unclear_limit=0.5):
+    """ """
+    # not enough review, pass
+    if line.nreviews <=min_review: # not enough
+        classification = "None"
+        
+    # easy, all the same 
+    elif line.ntypes == 1 and line.ntypings[0] >= min_autotyping: 
+        classification =  line.typing[0]
+        
+    # Typing ok, Sub-tyiping not
+    elif np.all(['ia' in k and "not ia" not in k for k in line.typing]) and line.nreviews >=min_generic_typing:
+        classification = "ia"
+
+    # all non-ia ?
+    elif np.all([k in Classifications._NONIA_CASES for k in line.typing])  and line.nreviews >=min_generic_typing:
+        classification = "nonia"
+        
+
+    # saving unclears if possible
+    elif "unclear" in line["typing"]:
+        info = dict(zip(line["typing"],line["ntypings"]))
+        n_unclears = info["unclear"] 
+        n_not = np.sum([v for k,v in info.items() if k !="unclear"])
+
+        if n_unclears < (n_unclears+n_not)*unclear_limit and n_not >min_generic_typing:
+            new_line = clear_unclear(line)
+            classification = parse_classification(new_line)
+        else:
+            classification = "confusing"
+    # Typing ok, Sub-tyiping not        
+    else:
+        classification = "confusing"
+        
+    return classification
+
+
+def clear_unclear(line):
+    """ remove the 'unclear' component from the given typing row """
+    typing = list(line.typing)
+    if "unclear" not in typing:
+        return line # nothing to do
+    
+    ntypings = list(line.ntypings)
+    index_unclear = typing.index("unclear")
+    typing.pop(index_unclear)
+    ntypings.pop(index_unclear)
+    return pandas.Series({"typing": typing,
+                          "ntypings": ntypings,
+                          "ntypes": len(ntypings),
+                          "nreviews": np.sum(ntypings)})
+
 
 class _DBApp_():
     _DB_NAME = None
@@ -93,7 +149,10 @@ class Reports( _DBApp_ ):
 class Classifications( _DBApp_ ):
     _DB_NAME = "Classifications"
     _NONIA_CASES = ["not ia", "ii","ib/c","gal","other"]
-    
+
+    MASTER_USER = ["jesper", "Joel Johansson", "Kate Maguire",
+                   "Mathew Smith", "Umut","Georgios Dimitriadis"]
+
     def load(self):
         """ """
         self._data = self.data_from_db(sql="where kind='typing'")
@@ -103,10 +162,86 @@ class Classifications( _DBApp_ ):
         """ """
         from . import get_sample
         self._sample = get_sample()
+
+    def load_classification(self, min_review=2, min_autotyping=3, min_generic_typing=4,
+                                  min_review_master=1, min_autotyping_master=2,
+                                  min_generic_typing_master=42):
+        """ """
+        self._load_classification(min_review=min_review, min_autotyping=min_autotyping,
+                                  min_generic_typing=min_generic_typing)
+        # master
+        master = self.get_masterclassification(False)
+        master._load_classification(min_review=min_review_master, min_autotyping=min_autotyping_master,
+                                  min_generic_typing=min_generic_typing_master)
+        # master successful classifications
+        mdata = master.data[~master.data["classification"].isin(["None","confusing"])
+                            ].groupby("target_name").first()["classification"]
+        mdata.name = "master_classification"        
+
+        data = self.data.set_index("target_name")
+        
+        # merged
+        datamerged = data.join(mdata).reset_index()
+        datamerged["auto_classification"] = datamerged["classification"]
+        mclassified = datamerged[~datamerged["master_classification"].isna()]["master_classification"]
+        datamerged.loc[mclassified.index, "classification"] = mclassified
+        
+        self._data = datamerged
+        
+        
+    def _load_classification(self, min_review=2, min_autotyping=3, min_generic_typing=4):
+        # Normal
+        class_df = self.get_classification_df()
+        class_df["classification"] = class_df.apply(parse_classification, axis=1,
+                                                    min_review=min_review, min_autotyping=min_autotyping,
+                                                    min_generic_typing=min_generic_typing)
+
+        # are you reloading ?
+        if "classification" in self.data:
+            _ = self.data.pop("classification")
+            
+        self._data = self.data.set_index("target_name").join(class_df["classification"]).reset_index()
+
+
         
     # -------- #
     # GETTER   #
     # -------- #
+    def get_masterclassification(self, incl_unclear=True):
+        """ """
+        this = self.__class__()
+        MASTER_ID = _Users_().data.set_index("name").loc[self.MASTER_USER]["id"].values
+        this._data = self.data[self.data["user_id"].isin(MASTER_ID)]
+        if not incl_unclear:
+            this._data = this._data[~(this._data["value"] == "unclear")]
+            
+        return this
+
+    def get_classification_stats(self, based_on="classification", **kwargs):
+        """ Get the distribution of classifications made. 
+
+        Parameters
+        ----------
+        based_on: str
+            classification key to used (from self.data); could be:
+            - classification
+            - master_classification
+            - auto_classification
+
+        **kwargs goes to get_data()
+
+        Returns
+        -------
+        pandas.Series
+            groupby().size() serie.
+        """
+        if "classification" not in self.data:
+            self.load_classification()
+
+        data = self.get_data(**kwargs)
+        return data.groupby("target_name").first().groupby(based_on).size()
+    
+    
     def get_data(self, incl_unclear=True, min_classification=None,
                      types=None, 
                      goodcoverage=None, redshift_range=None,
@@ -183,17 +318,45 @@ class Classifications( _DBApp_ ):
             
         return self.data[self.data["value"].isin(list_to_get)]
 
-
-    def get_classification(self, sort_favored=SORT_FAVORED):
+    def get_classification_df(self):
         """ """
-        data = self.get_data(incl_unclear=False)
-        typings = data.groupby(["target_name"])["value"].apply(list).apply(np.unique, return_counts=True)
-        return typings.apply(get_typing, sort_favored=sort_favored)
-
-        
+        data = self.get_data(incl_unclear=True)
+        typings = data.groupby(["target_name"])["value"].apply(np.unique, return_counts=True)
+        types =  pandas.DataFrame(typings.to_list(), columns=["typing", "ntypings"],
+                                index=typings.index)#.explode(["typing","ntypings"])
+        types["ntypes"] = types["ntypings"].apply(len)
+        types["nreviews"] = types["ntypings"].apply(np.sum)
+        return types
+    
     # -------- #
     # PLOTTER  #
     # -------- #
+    def show_classification_stats(self, ax=None, subtypes=None, redshift_range=None, 
+                                  based_on="classification", explode=None, startangle=0,
+                                  dataprop={}, **kwargs):
+        """ """
+        import matplotlib.pyplot as plt
+        if ax is None:
+            fig, ax = plt.subplots()
+        else:
+            fig = ax.figure
+
+
+        class_stat = self.get_classification_stats(based_on, 
+                                                  redshift_range=redshift_range, **dataprop)
+        if subtypes is not None:
+            class_stat = class_stat[[k for k in subtypes if k in class_stat]]
+
+        if type(explode) == float:
+            explode = np.full_like(class_stat.values, explode, dtype="float")
+            
+        prop = {**dict(explode=explode, autopct='%.0f%%', startangle=startangle), **kwargs}
+        _ = ax.pie(class_stat.values, labels=class_stat.index, **prop)
+
+        ax.set_title(f"{np.sum(class_stat.values)} Supernovae", color="tab:grey")
+        return fig
+
+    
     def show_classifications(self, ax=None, fig=None, 
                                  classifications=None, per_target=True):
         """ """

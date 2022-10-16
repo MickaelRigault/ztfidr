@@ -15,17 +15,22 @@ __all__ = ["get_targets_data",
 # ================== #
 def get_targets_data():
     """ """
-    redshifts = get_redshif_data()[["redshift","redshift_err", "redshift_source"]]
+    redshifts = get_redshif_data()[["redshift","redshift_err", "source"]]
     salt2params = get_salt2params()
     coords = get_coords_data()
+#    
     # merging
     data_ = pandas.merge(redshifts,salt2params, left_index=True, right_index=True,
                      suffixes=("","_salt"), how="outer")
     data_ = pandas.merge(data_, coords, left_index=True, right_index=True,
                          how="outer")
     # force limit to target to use
-    # target_list = get_targetlist()
-    # data_ = data_.loc[target_list]
+    target_list = get_targetlist()
+    data_ = data_.loc[target_list["ztfname"]]
+
+    # adding classification
+    typing = get_target_typing()
+    data_ = data_.join(typing["classification"], how="left")
     return data_
 
 def get_localhost_data(local_nkpc=2, which="mag"):
@@ -58,6 +63,16 @@ def get_targetlist(load=True, **kwargs):
         return filepath
     
     return pandas.read_csv(filepath, **kwargs)
+
+def get_target_typing(load=True, index_col=0, sep=" ", **kwargs):
+    """ """
+    filepath = os.path.join(IDR_PATH, "tables",
+                            "ztfdr2_typing.csv")
+    if not load:
+        return filepath
+    
+    return pandas.read_csv(filepath, index_col=index_col, sep=sep, **kwargs)
+    
 
 # Master List
 def get_masterlist(load=True, **kwargs):
