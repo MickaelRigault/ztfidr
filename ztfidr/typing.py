@@ -38,22 +38,36 @@ def parse_classification(line,
                          unclear_limit=0.5):
     """ """
     # not enough review, pass
-    if line.nreviews <=min_review: # not enough
+    if line.nreviews <= min_review: # not enough
         classification = "None"
         
     # easy, all the same 
     elif line.ntypes == 1 and line.ntypings[0] >= min_autotyping: 
         classification =  line.typing[0]
-        
-    # Typing ok, Sub-tyiping not
-    elif np.all(['ia' in k and "not ia" not in k for k in line.typing]) and line.nreviews >=min_generic_typing:
-        classification = "ia"
 
-    # all non-ia ?
-    elif np.all([k in Classifications._NONIA_CASES for k in line.typing])  and line.nreviews >=min_generic_typing:
-        classification = "nonia"
+    # special save for ia-norm cases.
         
-
+    # enough for generic, let's see if it's sufficient.        
+    elif line.nreviews >=min_generic_typing:
+        # go back to the easy-case
+        if "ia-norm" in line.typing and np.all([k in ["ia-norm", "sn ia", "unclear"] for k in line.typing]) \
+          and line.ntypings[ list(line.typing).index("ia-norm") ] >= min_autotyping:
+            classification = "ia-norm"
+            
+        # It looks like a Ia ir Ia-norm
+        elif np.all([k in ["ia-norm", "sn ia"] for k in line.typing]):
+            classification = "ia_or_ianorm"
+            
+        # Typing ok, Sub-tyiping not            
+        elif np.all(['ia' in k and "not ia" not in k for k in line.typing]):
+            classification = "ia"
+            
+        # all non-ia ?
+        elif np.all([k in Classifications._NONIA_CASES for k in line.typing]):
+            classification = "nonia"
+        else:
+            classification = "confusion"
+            
     # saving unclears if possible
     elif "unclear" in line["typing"]:
         info = dict(zip(line["typing"],line["ntypings"]))
@@ -65,6 +79,7 @@ def parse_classification(line,
             classification = parse_classification(new_line)
         else:
             classification = "confusing"
+            
     # Typing ok, Sub-tyiping not        
     else:
         classification = "confusing"
@@ -151,7 +166,7 @@ class Classifications( _DBApp_ ):
     _NONIA_CASES = ["not ia", "ii","ib/c","gal","other"]
 
     MASTER_USER = ["jesper", "Joel Johansson", "Kate Maguire",
-                   "Mathew Smith", "Umut","Georgios Dimitriadis"]
+                   "Mathew Smith", "Umut", "Georgios Dimitriadis"]
 
     def load(self):
         """ """
@@ -163,9 +178,22 @@ class Classifications( _DBApp_ ):
         from . import get_sample
         self._sample = get_sample()
 
-    def load_classification(self, min_review=2, min_autotyping=3, min_generic_typing=4,
-                                  min_review_master=1, min_autotyping_master=2,
-                                  min_generic_typing_master=42):
+    def store_typing(self, **kwargs):
+        """ """
+        self.load_classification(**kwargs)
+        data = self.get_classification_df()
+        classification = self.data.groupby("target_name").first()["classification"]
+        data = data.join(classification)
+        return data.to_csv( io.get_target_typing(False), sep=" ")
+        
+
+    def load_classification(self, min_review=2,
+                                  min_autotyping=3,
+                                  min_generic_typing=4,
+                                # Master keys
+                                  min_review_master=1,
+                                  min_autotyping_master=2,
+                                  min_generic_typing_master=3):
         """ """
         self._load_classification(min_review=min_review, min_autotyping=min_autotyping,
                                   min_generic_typing=min_generic_typing)
