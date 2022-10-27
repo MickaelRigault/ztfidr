@@ -174,7 +174,7 @@ class Spectrum( object ):
     def load_linefitter(self, redshift=0):
         """ """
         from . import linefitter
-        self._linefitter = linefitter.LineFitter(self, redshift_guess=redshift)
+        self._linefitter = linefitter.LineFitter(self, redshift_init=redshift)
         
     # --------- #
     #  SETTER   #
@@ -251,12 +251,12 @@ class Spectrum( object ):
     # --------- #
     #  FITTER   #
     # --------- #
-    def fit_hanii(self, redshift, **kwargs):
+    def fit_hanii(self, redshift=None, **kwargs):
         """ """
         if not hasattr(self,"_linefitter"):
             self.load_linefitter()
-            
-        self.linefitter.redshift_guess = redshift
+        if redshift is not None:
+            self.linefitter.redshift_init = redshift
         return self.linefitter.fit(**kwargs)
         
     def fit_snid(self,  phase=None, redshift=None,

@@ -4,15 +4,33 @@ import pandas
 from scipy import stats
 from scipy.special import legendre
 
-def get_truncnorm_prior(x, loc=0, scale=1, a=0, b=5):
-    """ truncated normal prior.
-        This truncation parameters (a and b) are in units of scale.
-        such that parameters lower than: loc-a*scale and larger than loc+b*scale are set to 0
-        """
-    return stats.truncnorm.pdf(x, loc=loc, scale=scale, a=a, b=b)
+
+__all__ = ["fit_spectrum"]
+
+def fit_spectrum(spectrum, redshift, figure=True, **kwargs):
+    """ loads the intance and fit a spectrum 
+        
+    Parameters
+    ----------
+    spectrum: ztfidr.Spectrum or str
+        spectrum or spectrum filepath to fit
+
+    redshift: float
+        initial redshift guess
+
+    figure: bool
+        should a figure be created. 
+        If False, returned figure is None.
 
 
-
+    **kwargs fit() options
+        
+    Returns
+    -------
+    pandas.Series, pandas.DataFrame
+        metadata table and results (value, error, cov_)
+    """
+    return LineFitter.fit_spectrum(spectrum, redshift, figure=figure, **kwargs)
 
 class LineFitter( object ):
     LINES = {"HA":6562.8,
@@ -23,40 +41,195 @@ class LineFitter( object ):
     
     BACKGROUND_DEGREE = 3 # only affects guess, rest is self consistent.
     LBDA_WINDOM = 150
-    def __init__(self, spectrum=None, redshift_guess=0):
+    def __init__(self, spectrum=None, redshift_init=0):
         """ """
         self.spectrum = spectrum
-        self.redshift_guess = redshift_guess
+        self.redshift_init = redshift_init
+
+    @classmethod
+    def fit_spectrum(cls, spectrum, redshift, figure=True, **kwargs):
+        """ loads the intance and fit a spectrum 
+        
+        Parameters
+        ----------
+        spectrum: ztfidr.Spectrum or str
+            spectrum or spectrum filepath to fit
+
+        redshift: float
+            initial redshift guess
+            
+        figure: bool
+            should a figure be created. 
+            If False, returned figure is None.
+
+        **kwargs fit() options
+        
+        Returns
+        -------
+        (pandas.Series, pandas.DataFrame), figure
+            metadata table and results (value, error, cov_)
+        """
+        if type(spectrum) is str:
+            from .spectroscopy import Spectrum
+            spectrum = Spectrum.from_filename(spectrum)
+        
+        this = cls(spectrum, redshift)
+        params = this.fit(**kwargs)
+        if figure:
+            fig = this.show_data(show_guess=True, 
+                                    model_parameters=params["value"])
+        else:
+            fig = None
+            
+        return *this.to_pandas(), fig
+
+    # ---------- #
+    # High Level #
+    # ---------- #
+    
+    def fit(self, guess={},
+                limit_sigma=[1,10], limit_reshift=[0,0.3],
+                **kwargs):
+        """ fit the model. 
+
+        The fitted data are these from self.fitted_data that is created
+        automatically up on first call using get_fitted_data(). 
+        
+        Parameters
+        ----------
+        guess: dict
+            dictionary to overwrite any default guess parameters
+            obtained using self.get_guess_parameters(). 
+
+        limit_sigma: (float, float)
+            boundaries of the sigma parameters (emission line 'scale' in lbda-pixel)
+
+        limit_redshift: (float, float)
+            boundaries for the fitted redshift.
+    
+        **kwargs goes to Minuit()
+
+        Returns
+        -------
+        DataFrame
+
+        See also
+        --------
+        get_fitted_data: get the data as fitted (truncated as needed and normalize)
+        to_pandas: get the fit result in pandas format (meta, result)
+        """
+        from iminuit import Minuit
+        from iminuit.util import make_func_code
+        # Minuit naming
+        setattr(self.__class__.get_logprob, "func_code", make_func_code(self.param_names))
+
+        # create the guesses
+        guess_list = self.get_guess_parameters()
+        guess = {**dict( zip(self.param_names, guess_list) ), **guess}
+        
+        # load Minuit
+        self._minuit = Minuit( self.get_logprob, **guess, **kwargs)
+        # provide fitting limits
+        self._minuit.limits["sigma"] = limit_sigma
+        self._minuit.limits["redshift"] = limit_reshift
+        
+        # Fit
+        self._minuit.migrad()
+        self._minuit.hesse()
+        # output 
+        return self.fitted_parameters
+    
+    def to_pandas(self, restore_norm=True):
+        """ convert the minuit output into pandas format
+
+        Parameters
+        ----------
+        restore_norm: bool
+            the fitted data are normalized. Should the returned amplitude parameters
+            be restoted into input data units ? 
+            If False, returned results will be in fitted_data units ; 
+            as for self.fitted_parameters.
+
+        Returns
+        -------
+        pandas.Series, pandas.DataFrame
+            metadata table and results (value, error, cov_)
+
+        See also
+        --------
+        fitted_parameters: fit results in pandas dataframe
+        fit: main fit method.
+        """
+        results = self.fitted_parameters # dataframe of value, error, cov
+        if self._fitdata_norm != 1 and restore_norm: # that would also work, but useless
+            results.loc[results.index.str.startswith("ampl_")] *= self._fitdata_norm
+            results.loc[:,results.columns.str.startswith("cov_ampl_")] *=  self._fitdata_norm
+
+        meta = pandas.Series({k: getattr(self._minuit,k) for k in ["fval","valid","accurate","nfit","nfcn"]})
+        return meta, results
 
     # --------- #
-    #   Data    #
+    #  Method   #
     # --------- #
-    def get_fitted_data(self, redshift_guess=None,  
-                        check_variance=True, var_window_percent=10, normalised=True):
-        """ """
-        if redshift_guess is None:
-            redshift_guess = self.redshift_guess
+    def get_fitted_data(self, redshift_init=None,  
+                        check_variance=True, var_window_percent=10,
+                        normalised=True):
+        """ get a subpart of the data where to perform the fit. 
+        They are truncated in wavelength to the relevant lbda range and normalized. 
+
+        Parameters
+        ----------
+        redshift_init: float
+            initial redshift guess used to truncate the wavelength range of interest
+            (see LBDA_WINDOW class parameters).
+            If None self.redshift_init is used (recommended)
+
+        check_variance: bool
+            should this method fix any potential variance issues. 
+            Under or over estimated variance affects the fitted parameter 
+            error estimation. Scatter of the data at the fitted_data edges 
+            are used for that. (see var_window_percent).
+            This also created a variance estimation if no variance exist.
+
+        var_window_percent: float
+            = ignored if check_variance is False = 
+            the pixel-window (in percent of total fitted_data lbda) used 
+            to estimate the expected signal variance ; half from each edges 
+            of the fitted_data wavelength range. 
+            For instance, var_window_percent=10 means that 10% of the 
+            spectrum will be used to estimate the variance (flux std) 
+            using the average of the first and last 5%.
+            
+        normalised: bool
+            should the data be normalized (flux.mean) for the fit ?
+            (highly recommended)
+        
+        Returns
+        -------
+        pandas.DataFrame
+            lbda, flux[, variance]
+           
+        """
+        if redshift_init is None:
+            redshift_init = self.redshift_init
         
         lines = np.asarray(self.fitted_lines)
-        lbda_flag = (self.spectrum.lbda > (lines.min()*(1+redshift_guess) - self.LBDA_WINDOM)) & \
-                    (self.spectrum.lbda < (lines.max()*(1+redshift_guess) + self.LBDA_WINDOM))
+        lbda_flag = (self.spectrum.lbda > (lines.min()*(1+redshift_init) - self.LBDA_WINDOM)) & \
+                    (self.spectrum.lbda < (lines.max()*(1+redshift_init) + self.LBDA_WINDOM))
         
         data = self.spectrum.data[lbda_flag].copy()
         data["lbda_x"] = ((data["lbda"].values - data["lbda"].min())/(data["lbda"].max() - data["lbda"].min()) - 0.5)*2
         if check_variance:
-            print("checking variance")
-            var_window = int(data.size*var_window_percent*0.5)
+            var_window = int(data.size*var_window_percent/100*0.5)
             var_ = np.mean([data["flux"][:var_window].values.std()**2,
                            data["flux"][-var_window:].values.std()**2])
             
             if  "variance" not in data:
-                print("creating a variance")
                 data["variance"] = var_
                 
             else:
                 var_in = np.mean([data["variance"][:var_window].values.mean(),
                                   data["variance"][-var_window:].values.mean()])
-                print(f"variance correction, {var_/var_in}")
                 data["variance"] *= (var_/var_in)
 
         if normalised:
@@ -69,55 +242,10 @@ class LineFitter( object ):
             self._fitdata_norm = 1
 
         return data
-
-    def to_pandas(self):
-        """ """
-        results = self.fitted_parameters # dataframe of value, error, cov
-        if self._fitdata_norm != 1: # that would also work, but useless
-            results.loc[results.index.str.startswith("ampl_")] *= self._fitdata_norm
-            results.loc[:,results.columns.str.startswith("cov_ampl_")] *=  self._fitdata_norm
-
-        meta = pandas.Series({k:self._fit_output[k] for k in ["success","fun","nit","status", "message"]})
-        return meta, results
         
     # --------- #
     #   Model   #
     # --------- #
-    def fit(self, data=None, leastsq=False, use_redshift_guess=True, **kwargs):
-        """ """
-#        from iminuit import Minuit
-
-    def fit_minuit(self, data=None, leastsq=False, use_redshift_guess=False,
-                       limit_sigma=[2,10], limit_reshift=[0,0.3],
-                       **kwargs):
-        """ 
-
-        Parameters
-        ----------
-
-        **kwargs goes to Minuit()
-        """
-        from iminuit import Minuit
-        from iminuit.util import make_func_code
-        setattr(self.__class__.get_logprob, "func_code", make_func_code(self.param_names))
-
-        if data is not None:
-            self._fitted_data = data
-
-        # create the guesses            
-        redshift = None if not use_redshift_guess else self.redshift_guess
-        guess_list = self.get_parameterguess(redshift=redshift)
-        guess = dict( zip(self.param_names, guess_list) )
-        # load Minuit
-        self._minuit = Minuit( self.get_logprob, **guess, **kwargs)
-        self._minuit.limits["sigma"] = limit_sigma
-        self._minuit.limits["redshift"] = limit_reshift
-        # Fit
-        self._minuit.migrad()
-        self._minuit.hesse()
-        return self.fitted_parameters
-
-        
     def get_logprob(self, *parameters):
         """ """
         chi2 = self.get_chi2(parameters)
@@ -190,36 +318,45 @@ class LineFitter( object ):
         
         return data
     
-    def get_parameterguess(self, redshift=None, sigma=None,
-                            data=None, **kwargs):
-        """ """
-        # Parameters are:
-        # [amplitudes], redshift, sigma, [backgrounds] | [] means list
-        if data is None:
-            data = self.fitted_data
+    def get_guess_parameters(self, sigma=4, redshift_buffer=10, **kwargs):
+        """ 
 
+        """
+        #
         # background
+        #
         b_params = np.zeros(self.BACKGROUND_DEGREE)
-        b_params[0] = data["flux"].median() # constant. 
+        b_params[0] = self.fitted_data["flux"].median() # constant. 
         if self.BACKGROUND_DEGREE>1:
             # devided by 2 because lbda_x defined between -1 and 1
-            b_params[1] = (data["flux"].iloc[-5:].mean() - data["flux"].iloc[:5].mean())/2
+            b_params[1] = (self.fitted_data["flux"].iloc[-5:].mean() - self.fitted_data["flux"].iloc[:5].mean())/2
             
+        #
+        # redshift
+        #
+        top_line_args = self.fitted_data["flux"].argmax()
+                
+        if redshift_buffer is not None:
+            ha_arg = np.argmin(np.abs(self.fitted_data["lbda"] - self.LINES["HA"]*(1+self.redshift_init)))
+            # 4 pixels buffer
+            buffer_size = 2
+            local_argmax = self.fitted_data.iloc[ha_arg-buffer_size : ha_arg+buffer_size]["flux"].argmax()
+            top_line_args = ha_arg - buffer_size + local_argmax
+
+        redshift = (self.fitted_data.iloc[top_line_args]["lbda"] / self.LINES["HA"]) - 1
+
+        #
+        # sigma
+        # 
+        # - Nothing do do
         
-        # Redshift
-        top_line_args = data["flux"].argmax()
-        if redshift is None:
-            redshift = (data.iloc[top_line_args]["lbda"] / self.LINES["HA"]) - 1
-            ha_arg = top_line_args
-        else:
-            ha_arg = np.argmin(np.abs(data["lbda"] - self.LINES["HA"]*(1+redshift)))
-            
-        if sigma is None:
-            sigma = 4 # classique for lsf resolution
-            
-        ha_amplitude = (data.iloc[ha_arg]["flux"] - b_params[0]) * np.sqrt(2*np.pi)*sigma
+        #
+        # Amplitudes
+        # 
+        ha_amplitude = (self.fitted_data.iloc[top_line_args]["flux"] - b_params[0]) * np.sqrt(2*np.pi)*sigma
         amplitudes = np.ones(self.nlines)*ha_amplitude 
         amplitudes[1:] /= 3 # all lines at a third of Ha
+        # returns
         return *amplitudes, redshift, sigma, *b_params
         
         
@@ -242,12 +379,12 @@ class LineFitter( object ):
             ax.fill_between(data.lbda, data.flux+err, data.flux-err, alpha=0.1)
         
         if show_lines:
-            redshift = self.redshift_guess
+            redshift = self.redshift_init
             _ = [ax.axvline(line*(1+redshift), ls="--", color="0.7")
                  for line in self.fitted_lines]
             
         if show_guess:
-            parameters = self.get_parameterguess()
+            parameters = self.get_guess_parameters()
             data = self.get_model(parameters, data=data)
             ax.plot(data["lbda"], data["model"], ls=":", label="guess")
             
