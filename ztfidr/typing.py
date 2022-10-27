@@ -66,7 +66,7 @@ def parse_classification(line,
         elif np.all([k in Classifications._NONIA_CASES for k in line.typing]):
             classification = "nonia"
         else:
-            classification = "confusion"
+            classification = "confusing"
             
     # saving unclears if possible
     elif "unclear" in line["typing"]:
@@ -180,7 +180,8 @@ class Classifications( _DBApp_ ):
 
     def store_typing(self, **kwargs):
         """ """
-        self.load_classification(**kwargs)
+        if "classification" not in self.data:
+            self.load_classification(**kwargs)
         data = self.get_classification_df()
         classification = self.data.groupby("target_name").first()["classification"]
         data = data.join(classification)
@@ -359,29 +360,67 @@ class Classifications( _DBApp_ ):
     # -------- #
     # PLOTTER  #
     # -------- #
-    def show_classification_stats(self, ax=None, subtypes=None, redshift_range=None, 
-                                  based_on="classification", explode=None, startangle=0,
-                                  dataprop={}, **kwargs):
+    def show_classification_stats(self, explode = 0.1,
+                                  based_on = "classification", 
+                                  redshift_range = None, dataprop = {},
+                                  **kwargs):
         """ """
         import matplotlib.pyplot as plt
-        if ax is None:
-            fig, ax = plt.subplots()
-        else:
-            fig = ax.figure
+        
+        prop_general = {**dict(wedgeprops=dict(width=1, edgecolor='0.7', linewidth=0.2)), 
+                **kwargs}
 
 
-        class_stat = self.get_classification_stats(based_on, 
-                                                  redshift_range=redshift_range, **dataprop)
-        if subtypes is not None:
-            class_stat = class_stat[[k for k in subtypes if k in class_stat]]
+        class_stat = self.get_classification_stats( based_on, redshift_range=redshift_range,
+                                                    **dataprop)
 
+        CLASSIFIED_KEY = ["ia-norm", "ia-pec", "ia", "sn ia", "ia_or_ianorm"]
+        class_stat["ia-pec"] = class_stat[["ia-91bg","ia-91t","ia-other"]].sum()
+        class_stat["classified"] = class_stat[CLASSIFIED_KEY].sum()
+        class_stat["non ia"] = class_stat[[k for k in self._NONIA_CASES if k in class_stat]].sum()
+
+        # showing plots
+
+
+        fig = plt.figure(figsize=[9,4])
+        ax_main = fig.add_axes([0.05,0.15,0.4,0.8])
+        ax_sub = fig.add_axes([0.52,0.15,0.4,0.8])
+
+        # -> Main plot
+        to_show = ["None","confusing", "unclear", "classified", "non ia"]
+        data_show = class_stat[to_show]
         if type(explode) == float:
-            explode = np.full_like(class_stat.values, explode, dtype="float")
-            
-        prop = {**dict(explode=explode, autopct='%.0f%%', startangle=startangle), **kwargs}
-        _ = ax.pie(class_stat.values, labels=class_stat.index, **prop)
+            explode = np.full_like(data_show.values, explode, dtype="float")
 
-        ax.set_title(f"{np.sum(class_stat.values)} Supernovae", color="tab:grey")
+        colors = ["w","0.8", plt.cm.bone(0.3),  plt.cm.bone(0.7),
+                  "tab:brown"]
+        prop = {**dict(colors=colors, explode=explode, autopct='%.0f%%', 
+                       startangle=90), **prop_general}
+
+        # PLOTTING
+        _ = ax_main.pie(data_show.values, labels=data_show.index, **prop)
+
+        ax_main.text(0.5, -0.15, f"{np.sum(data_show.values)} Supernovae", 
+                     transform=ax_main.transAxes,
+                     fontsize="large", ha="center", va="bottom")
+
+        # -> sub plot
+        to_show = CLASSIFIED_KEY
+        data_show = class_stat[to_show]
+        if type(explode) == float:
+            explode = np.full_like(data_show.values, explode, dtype="float")
+
+        colors = ["tab:blue", "tab:orange", "wheat", "lavender", "lightsteelblue"]
+        prop = {**dict(colors=colors, explode=explode, autopct='%.0f%%', 
+                       startangle=0), **prop_general}
+
+        # PLOTTING
+        _ = ax_sub.pie(data_show.values, labels=data_show.index, **prop)
+
+        ax_sub.text(0.5, -0.15, f"{np.sum(data_show.values)} Supernovae", 
+                    transform=ax_sub.transAxes,
+                    fontsize="large", ha="center", va="bottom")
+
         return fig
 
     

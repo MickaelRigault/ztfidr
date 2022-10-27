@@ -86,12 +86,24 @@ def get_target_typing(load=True, index_col=0, sep=" ",
 def get_masterlist(load=True, **kwargs):
     """ """
     filepath = os.path.join(IDR_PATH, "tables",
-                            "ztfdr2_masterlist.csv")
+                            ".dataset_creation/sample_def/ztfdr2_masterlist.csv")
     if not load:
         return filepath
     
-    return pandas.read_csv(filepath, **kwargs)
+    data = pandas.read_csv(filepath, **kwargs)
+    return data["ztfname"].values.astype(str)
+
+def get_nospectralist(load=True, **kwargs):
+    """ """
+    filepath = os.path.join(IDR_PATH, "tables",
+                            ".dataset_creation/sample_def/ztfdr2_target_nospectra.csv")
+    if not load:
+        return filepath
     
+    data = pandas.read_csv(filepath, names=["ztfname"], **kwargs)
+    return data["ztfname"].values.astype(str)
+
+
 # Redshifts
 def get_redshif_data(load=True, index_col=0, **kwargs):
     """ """

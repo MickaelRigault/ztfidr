@@ -4,6 +4,7 @@ import pandas
 import warnings
 from . import io
 
+
 SPEC_DATAFILE = io.get_spectra_datafile()
 TARGETS_DATA = io.get_targets_data()
 
@@ -14,8 +15,6 @@ def get_target_spectra(name, load_snidres=True, **kwargs):
     return np.atleast_1d(Spectrum.from_name(name, load_snidres=load_snidres,
                                             **kwargs)
                         )
-
-
 
 def read_spectrum(file_, sep=None):
     """ """
@@ -35,8 +34,27 @@ def read_spectrum(file_, sep=None):
         data = pandas.DataFrame({"lbda":lbda, "flux":flux}, dtype="float")
     except:
         raise IOError(f"dataframe build Fails for {file_}")
+    
     if len(variance)>0:
-        data["variance"] = variance[0]
+        variance_ = np.asarray(variance[0], dtype="float")
+        if not np.all(variance_ == 0):
+            # Test Variance or Error | unit of log closest to 0
+            flag_testrange = [7000,8000]
+            flag_in = data["lbda"].between(*flag_testrange)
+            data_test = data[flag_in]
+            flux_std = data_test["flux"].std()
+            # 
+            as_var = np.sqrt(variance_[flag_in].mean()) / flux_std
+            as_err = variance_[flag_in].mean() / flux_std
+            if np.abs(as_err-1) < np.abs(as_var-1):
+                data["variance"] = variance_**2
+                data["variance_orig"] = variance[0]
+            else:
+                data["variance"] = variance_
+
+            if "_Keck_" in file_:
+                data["variance"] /=10
+                
     return header, data
 
 
@@ -152,6 +170,11 @@ class Spectrum( object ):
             snidresult = self.get_snidfit(phase=phase, redshift=redshift,
                                        **kwargs)
         self.set_snidresult( snidresult )
+
+    def load_linefitter(self, redshift=0):
+        """ """
+        from . import linefitter
+        self._linefitter = linefitter.LineFitter(self, redshift_guess=redshift)
         
     # --------- #
     #  SETTER   #
@@ -228,6 +251,14 @@ class Spectrum( object ):
     # --------- #
     #  FITTER   #
     # --------- #
+    def fit_hanii(self, redshift, **kwargs):
+        """ """
+        if not hasattr(self,"_linefitter"):
+            self.load_linefitter()
+            
+        self.linefitter.redshift_guess = redshift
+        return self.linefitter.fit(**kwargs)
+        
     def fit_snid(self,  phase=None, redshift=None,
                         delta_phase=5, delta_redshift=None,
                         lbda_range=[4000, 8000], **kwargs):
@@ -313,7 +344,8 @@ class Spectrum( object ):
         from dask.delayed import Delayed
         from dask import delayed
         if not type(self._data) == Delayed:
-            return 
+            return
+        
         self._data, self._header = delayed(list)([self._data, self._header]).compute()
         
     # ================ #
@@ -405,6 +437,14 @@ class Spectrum( object ):
         if not hasattr(self,"_filename"):
             return None
         return self._filename
+
+    @property
+    def linefitter(self):
+        """ """
+        if not hasattr(self,"_linefitter"):
+            return None
+        return self._linefitter
+
     
 # =============== #
 #                 #
