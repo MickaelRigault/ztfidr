@@ -230,15 +230,6 @@ class Spectrum( object ):
             
         return phase
 
-    def get_snidfit(self, phase=None, redshift=None,
-                        delta_phase=5, delta_redshift=None,
-                        lbda_range=[4000, 8000], **kwargs):
-        """ """
-        warnings.warn("DEPRECATED: use self.fit_snid() instead. This function redirect to it now. ")
-        return self.fit_snid(phase=phase, redshift=redshift,
-                                 delta_phase=delta_phase, delta_redshift=delta_redshift,
-                                 lbda_range=lbda_range, **kwargs)
-
     def get_redshift(self):
         """ """
         if self.snidresult is None:
@@ -247,7 +238,6 @@ class Spectrum( object ):
 
         return self.snidresult.get_redshift()
 
-    
     # --------- #
     #  FITTER   #
     # --------- #
@@ -401,6 +391,11 @@ class Spectrum( object ):
     def lbda(self):
         """ """
         return np.asarray(self.data["lbda"].values, dtype="float")
+
+    @property
+    def average_lstep(self):
+        """ """
+        return np.mean( np.unique(np.round( np.diff(self.lbda), 2) ) )
     
     @property
     def flux(self):

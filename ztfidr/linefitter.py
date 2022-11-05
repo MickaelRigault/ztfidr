@@ -7,7 +7,7 @@ from scipy.special import legendre
 
 __all__ = ["fit_spectrum"]
 
-def fit_spectrum(spectrum, redshift, figure=True, **kwargs):
+def fit_spectrum(spectrum, redshift, figure=True, dirout=None, **kwargs):
     """ loads the intance and fit a spectrum 
         
     Parameters
@@ -22,7 +22,10 @@ def fit_spectrum(spectrum, redshift, figure=True, **kwargs):
         should a figure be created. 
         If False, returned figure is None.
 
-
+    dirout: str
+        path for the directory where results will be stored. 
+        if figure is True, the figure will also be stored.
+        
     **kwargs fit() options
         
     Returns
@@ -30,7 +33,7 @@ def fit_spectrum(spectrum, redshift, figure=True, **kwargs):
     pandas.Series, pandas.DataFrame
         metadata table and results (value, error, cov_)
     """
-    return LineFitter.fit_spectrum(spectrum, redshift, figure=figure, **kwargs)
+    return LineFitter.fit_spectrum(spectrum, redshift, figure=figure, dirout=dirout, **kwargs)
 
 class LineFitter( object ):
     LINES = {"HA":6562.8,
@@ -47,7 +50,7 @@ class LineFitter( object ):
         self.redshift_init = redshift_init
 
     @classmethod
-    def fit_spectrum(cls, spectrum, redshift, figure=True, **kwargs):
+    def fit_spectrum(cls, spectrum, redshift, figure=True, dirout=None, **kwargs):
         """ loads the intance and fit a spectrum 
         
         Parameters
@@ -72,23 +75,28 @@ class LineFitter( object ):
         if type(spectrum) is str:
             from .spectroscopy import Spectrum
             spectrum = Spectrum.from_filename(spectrum)
-        
+        # Loads
         this = cls(spectrum, redshift)
+        # Fit        
         params = this.fit(**kwargs)
+        # Plot
         if figure:
             fig = this.show_data(show_guess=True, 
                                     model_parameters=params["value"])
         else:
             fig = None
+        # Store
+        if dirout is not None:
+            _ = this.store(dirout, fig=fig)
             
         return *this.to_pandas(), fig
 
     # ---------- #
     # High Level #
     # ---------- #
-    
     def fit(self, guess={},
-                limit_sigma=[1,10], limit_reshift=[0,0.3],
+                limit_sigma=[.01, 5], limit_reshift=[0,0.4],
+                sigma_pixel=True,
                 **kwargs):
         """ fit the model. 
 
@@ -118,26 +126,50 @@ class LineFitter( object ):
         get_fitted_data: get the data as fitted (truncated as needed and normalize)
         to_pandas: get the fit result in pandas format (meta, result)
         """
+        # red input
+        if limit_sigma is not None and sigma_pixel:
+            average_step = self.fitted_data["lbda"].diff().mean()
+            limit_sigma = list(np.asarray(limit_sigma) * average_step)
+            sigma = np.sqrt(2**2 + average_step**2) # 2 A corresponds to ~90 km/s gas dispersion
+        else:
+            sigma = None
+
+        
         from iminuit import Minuit
         from iminuit.util import make_func_code
         # Minuit naming
         setattr(self.__class__.get_logprob, "func_code", make_func_code(self.param_names))
 
         # create the guesses
-        guess_list = self.get_guess_parameters()
+        guess_list = self.get_guess_parameters(sigma=sigma)
         guess = {**dict( zip(self.param_names, guess_list) ), **guess}
+        self._fit_guess  = guess
         
         # load Minuit
         self._minuit = Minuit( self.get_logprob, **guess, **kwargs)
         # provide fitting limits
+            
         self._minuit.limits["sigma"] = limit_sigma
         self._minuit.limits["redshift"] = limit_reshift
         
         # Fit
         self._minuit.migrad()
         self._minuit.hesse()
+        
         # output 
         return self.fitted_parameters
+
+    def store(self, dirout, fig=None):
+        """ """
+        import os
+        filename = os.path.basename(self.spectrum.filename).replace('.ascii', f'_linfit.parquet')
+        filepath = os.path.join(dirout, filename)
+        meta, results = self.to_pandas()
+        results.to_parquet(filepath)
+        if fig is not None:
+            fig.savefig( filepath.replace(".parquet",".pdf") )
+
+        return filepath
     
     def to_pandas(self, restore_norm=True):
         """ convert the minuit output into pandas format
@@ -161,11 +193,13 @@ class LineFitter( object ):
         fit: main fit method.
         """
         results = self.fitted_parameters # dataframe of value, error, cov
+        results = results.join( pandas.Series(self._fit_guess, name="guess"))
         if self._fitdata_norm != 1 and restore_norm: # that would also work, but useless
             results.loc[results.index.str.startswith("ampl_")] *= self._fitdata_norm
             results.loc[:,results.columns.str.startswith("cov_ampl_")] *=  self._fitdata_norm
 
         meta = pandas.Series({k: getattr(self._minuit,k) for k in ["fval","valid","accurate","nfit","nfcn"]})
+        meta["ha_detection"] = (results["value"]/results["error"]).loc["ampl_ha"]
         return meta, results
 
     # --------- #
@@ -272,7 +306,7 @@ class LineFitter( object ):
         """ """
         all_amplitudes = np.asarray(self.get_lineamplitudes(amplitudes))
         all_lbda = np.asarray(self.fitted_lines) * (1 + redshift)
-        
+
         all_model = np.dot(all_amplitudes,
                            stats.norm.pdf(np.asarray(lbda)[:,None], 
                                           loc=all_lbda, 
@@ -318,7 +352,7 @@ class LineFitter( object ):
         
         return data
     
-    def get_guess_parameters(self, sigma=4, redshift_buffer=10, **kwargs):
+    def get_guess_parameters(self, sigma=None, redshift_buffer=10, **kwargs):
         """ 
 
         """
@@ -347,7 +381,10 @@ class LineFitter( object ):
 
         #
         # sigma
-        # 
+        #
+        if sigma is None:
+            average_step = self.fitted_data["lbda"].diff().mean()
+            sigma = np.sqrt(2**2 + average_step**2) # 2 A corresponds to ~90 km/s gas dispersion
         # - Nothing do do
         
         #
@@ -384,7 +421,11 @@ class LineFitter( object ):
                  for line in self.fitted_lines]
             
         if show_guess:
-            parameters = self.get_guess_parameters()
+            if hasattr(self, "_fit_guess"):
+                parameters = [self._fit_guess[k] for k in self.param_names]
+            else:
+                parameters = self.get_guess_parameters()
+                
             data = self.get_model(parameters, data=data)
             ax.plot(data["lbda"], data["model"], ls=":", label="guess")
             

@@ -9,11 +9,6 @@ TARGET_DATA = io.get_targets_data()
 
 COLORS = ["0.6"]*10 # , "tan", "lightsteelblue", "thistle", "darkseagreen"]
 
-
-REDSHIFT_LABEL = {2:'host',
-                  1:"sn",
-                  0:"unknown"}
-
 class Target():
     """ """
     def __init__(self, lightcurve, spectra, meta=None):
@@ -102,6 +97,31 @@ class Target():
                      }
         return pandas.Series(typing)[['type', 'subtype', 'p(type)', 'p(subtype|type)']]
         return df_types
+
+    def fit_snid(self, delta_phase=5, lbda_range=[4000, 8000],
+                       redshift_source=['host_cat', 'override', 'ha_nii'],
+                       set_it=True,
+                     **kwargs):
+        """ fit SNID constraining redshift and phase """
+
+        # Redshift input
+        redshift, source = self.get_redshift()
+        if redshift_source is None or source not in redshift_source:
+            redshift = None
+
+        # Phase
+        snidres = []
+        for spec_ in np.atleast_1d(self.spectra):
+            phase = spec_.get_phase( self.meta["t0"] )
+            snidres_ = spec_.fit_snid(phase=phase, redshift=redshift,
+                                          delta_phase=delta_phase, lbda_range=lbda_range)
+            if set_it:
+                spec_.set_snidresult(snidres_)
+            
+            snidres.append(snidres_)
+            
+        return snidres[0] if not self.has_multiple_spectra() else snidres
+        
     
     def get_snidresult(self, redshift=None, zquality=2, set_it=True, allow_run=True, **kwargs):
         """ """
@@ -124,7 +144,7 @@ class Target():
         for spec_ in np.atleast_1d(self.spectra):
             phase = spec_.get_phase( self.salt2param["t0"] )
             if spec_.snidresult is None:
-                snidres_ = spec_.get_snidfit(phase=phase, redshift=redshift, **kwargs)
+                snidres_ = spec_.fit_snid(phase=phase, redshift=redshift, **kwargs)
                 if set_it:
                     spec_.set_snidresult(snidres_)
             else:
@@ -136,7 +156,7 @@ class Target():
 
     def get_redshift(self ):
         """ """
-        return self.meta["redshift"], self.meta["z_quality"]
+        return self.meta["redshift"], self.meta["source"]
 
     def get_obsphase(self, **kwargs):
         """ """
@@ -160,7 +180,7 @@ class Target():
     # -------- #
     # PLOTTER  #
     # -------- #
-    def show(self, spiderkwargs={}, nbest=3, lines={"Ha":6563},
+    def show(self, nbest=3, lines={"Ha":6563},
                  line_color="0.6", allow_snidrun=False):
         """ """
         import matplotlib.pyplot as mpl
@@ -180,8 +200,11 @@ class Target():
         axes = []
         for i in range(n_speclines):
             axs = fig.add_axes([0.15, _top_lc+_lc_spany+i*(_spany+_sp_height), 0.55, _sp_height])
-            axt = fig.add_axes([0.75, _top_lc+_lc_spany+i*(_spany+_sp_height), 0.2, _sp_height*0.8], polar=True)
-            axes.append([axs, axt])
+            
+            axt = fig.add_axes([0.75, _top_lc+_lc_spany+i*(_spany+_sp_height), 0.2, _sp_height*0.8])
+            axtt = fig.add_axes([0.75, _top_lc+_lc_spany+i*(_spany+_sp_height) + _sp_height*0.9, 0.2, _sp_height*0.1])
+            axes.append([axs, [axtt,axt]])
+
         #
         # - Plotter
         #
@@ -189,7 +212,8 @@ class Target():
         lc = self.lightcurve.show(ax=axlc, 
                                   zprop=dict(ls="-", color="0.6",lw=0.5))
         redshift, redshift_source = self.get_redshift()
-        redshift_label = REDSHIFT_LABEL[int(redshift_source)]
+        redshift_label = redshift_source
+        
         # - No Spectra
         if not self.has_spectra():
             axs.text(0.5,0.5, f"no Spectra for {self.name}", 
@@ -198,15 +222,15 @@ class Target():
             axs.set_yticks([]) ;axs.set_xticks([])
             clearwhich = ["left","right","top"] # "bottom"
             [axs.spines[which].set_visible(False) for which in clearwhich]
-        # - Multiple spectra            
+            
+        # - spectra            
         else:
-            for i,spec_ in enumerate(np.atleast_1d(self.spectra)[::-1]):
+            for i, spec_ in enumerate(np.atleast_1d(self.spectra)[::-1]):
                 phase = spec_.get_phase( self.salt2param["t0"], z=redshift)
 
                 label=rf"{self.name} z={redshift:.3f} ({redshift_label}) | $\Delta$t: {phase:+.1f}"
                 sp = spec_.show_snidresult(axes=axes[i], nbest=nbest,
-                                          label=label, color_data=COLORS[i],
-                                          spiderkwargs=spiderkwargs)
+                                          label=label, color_data=COLORS[i])
                 # - ObsLine
                 axlc.axvline(spec_.get_obsdate().datetime, 
                              ls="--", color=COLORS[i])

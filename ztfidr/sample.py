@@ -270,17 +270,26 @@ class Sample():
             
         return data
 
+    # Target | High level
+    def get_target(self, name):
+        """ """
+        from . import target
+        lightcurve = self.get_target_lightcurve(name)
+        spectra = self.get_target_spectra(name, as_spectra=True)
+        meta = self.data.loc[name]
+        return target.Target(lightcurve, spectra, meta=meta)
+
     # LightCurve
-    def get_target_lightcurve(self, name):
+    def get_target_lightcurve(self, name, **kwargs):
         """ Get the {name} LightCurve object """
         from . import lightcurve
         return lightcurve.LightCurve.from_name(name)
 
     # Spectrum
-    def get_target_spectra(self, name):
+    def get_target_spectra(self, name, **kwargs):
         """ Get a list with all the Spectra for the given object """
         from . import spectroscopy
-        return spectroscopy.Spectrum.from_name(name)
+        return spectroscopy.Spectrum.from_name(name, **kwargs)
 
     # Extra
     def get_goodcoverage_targets(self,
