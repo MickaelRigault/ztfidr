@@ -262,7 +262,7 @@ def get_phase_coverage(load=True, warn=True, **kwargs):
 def get_autotyping(load=True, index_col=0, **kwargs):
     """ """
     filepath = os.path.join(IDR_PATH, "tables",
-                            "autotyping.csv")
+                            ".dataset_creation/sample_def/spec_class/autotyping.csv")
     if not load:
         return filepath
     return pandas.read_csv(filepath, index_col=index_col, **kwargs)
