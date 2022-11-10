@@ -7,7 +7,7 @@ from scipy.special import legendre
 
 __all__ = ["fit_spectrum"]
 
-def fit_spectrum(spectrum, redshift, figure=True, dirout=None, **kwargs):
+def fit_spectrum(spectrum, redshift, figure=True, dirout=None, lbda_window=None, **kwargs):
     """ loads the intance and fit a spectrum 
         
     Parameters
@@ -33,7 +33,8 @@ def fit_spectrum(spectrum, redshift, figure=True, dirout=None, **kwargs):
     pandas.Series, pandas.DataFrame
         metadata table and results (value, error, cov_)
     """
-    return LineFitter.fit_spectrum(spectrum, redshift, figure=figure, dirout=dirout, **kwargs)
+    return LineFitter.fit_spectrum(spectrum, redshift, figure=figure, dirout=dirout,
+                                       lbda_window=lbda_window, **kwargs)
 
 class LineFitter( object ):
     LINES = {"HA":6562.8,
@@ -43,14 +44,21 @@ class LineFitter( object ):
                     }
     
     BACKGROUND_DEGREE = 3 # only affects guess, rest is self consistent.
-    LBDA_WINDOM = 150
-    def __init__(self, spectrum=None, redshift_init=0):
+    LBDA_WINDOW = 150  # value used it not provided.
+    
+    def __init__(self, spectrum=None, redshift_init=0, lbda_window=None):
         """ """
         self.spectrum = spectrum
         self.redshift_init = redshift_init
+        
+        if lbda_window is None:
+            lbda_window = self.LBDA_WINDOW
+        
+        self.lbda_window = lbda_window
 
     @classmethod
-    def fit_spectrum(cls, spectrum, redshift, figure=True, dirout=None, **kwargs):
+    def fit_spectrum(cls, spectrum, redshift, figure=True, dirout=None,
+                         lbda_window=None, **kwargs):
         """ loads the intance and fit a spectrum 
         
         Parameters
@@ -76,7 +84,7 @@ class LineFitter( object ):
             from .spectroscopy import Spectrum
             spectrum = Spectrum.from_filename(spectrum)
         # Loads
-        this = cls(spectrum, redshift)
+        this = cls(spectrum, redshift, lbda_window=lbda_window)
         # Fit        
         params = this.fit(**kwargs)
         # Plot
@@ -94,7 +102,7 @@ class LineFitter( object ):
     # ---------- #
     # High Level #
     # ---------- #
-    def fit(self, guess={},
+    def fit(self, guess={}, limits={}, fixed={},
                 limit_sigma=[.01, 5], limit_reshift=[0,0.4],
                 sigma_pixel=True,
                 **kwargs):
@@ -126,6 +134,12 @@ class LineFitter( object ):
         get_fitted_data: get the data as fitted (truncated as needed and normalize)
         to_pandas: get the fit result in pandas format (meta, result)
         """
+        if fixed is None:
+            fixed = {}
+            
+        if limits is None:
+            limits = {}
+        
         # red input
         if limit_sigma is not None and sigma_pixel:
             average_step = self.fitted_data["lbda"].diff().mean()
@@ -143,16 +157,28 @@ class LineFitter( object ):
         # create the guesses
         guess_list = self.get_guess_parameters(sigma=sigma)
         guess = {**dict( zip(self.param_names, guess_list) ), **guess}
-        self._fit_guess  = guess
-        
+        guess = {**guess, **fixed} # force the fixed parameters
+        self._fit_guess = guess
+
+        #
         # load Minuit
+        #
+        # -> function to optimize
         self._minuit = Minuit( self.get_logprob, **guess, **kwargs)
-        # provide fitting limits
-            
+        
+        # -> parameter limits
         self._minuit.limits["sigma"] = limit_sigma
         self._minuit.limits["redshift"] = limit_reshift
-        
-        # Fit
+        for k, v in limits.items():
+            self._minuit[k] = v
+
+        # -> parameter to fix
+        for k, v in fixed.items(): # value set in the guess.
+            self._minuit.fixed[k] = True
+
+        # 
+        # Run the fit
+        #
         self._minuit.migrad()
         self._minuit.hesse()
         
@@ -194,12 +220,17 @@ class LineFitter( object ):
         """
         results = self.fitted_parameters # dataframe of value, error, cov
         results = results.join( pandas.Series(self._fit_guess, name="guess"))
+
+        meta = pandas.Series({k: getattr(self._minuit,k) for k in ["fval","valid","accurate","nfit","nfcn"]})
+        meta["ha_detection"] = (results["value"]/results["error"]).loc["ampl_ha"]
+        meta["dof"] = len(self.fitted_data) - len(self.free_parameters)
+        meta["targetname"] = self.spectrum.targetname
+        
         if self._fitdata_norm != 1 and restore_norm: # that would also work, but useless
             results.loc[results.index.str.startswith("ampl_")] *= self._fitdata_norm
             results.loc[:,results.columns.str.startswith("cov_ampl_")] *=  self._fitdata_norm
 
-        meta = pandas.Series({k: getattr(self._minuit,k) for k in ["fval","valid","accurate","nfit","nfcn"]})
-        meta["ha_detection"] = (results["value"]/results["error"]).loc["ampl_ha"]
+
         return meta, results
 
     # --------- #
@@ -215,7 +246,7 @@ class LineFitter( object ):
         ----------
         redshift_init: float
             initial redshift guess used to truncate the wavelength range of interest
-            (see LBDA_WINDOW class parameters).
+            (see self.lbda_window parameters).
             If None self.redshift_init is used (recommended)
 
         check_variance: bool
@@ -248,8 +279,8 @@ class LineFitter( object ):
             redshift_init = self.redshift_init
         
         lines = np.asarray(self.fitted_lines)
-        lbda_flag = (self.spectrum.lbda > (lines.min()*(1+redshift_init) - self.LBDA_WINDOM)) & \
-                    (self.spectrum.lbda < (lines.max()*(1+redshift_init) + self.LBDA_WINDOM))
+        lbda_flag = (self.spectrum.lbda > (lines.min()*(1+redshift_init) - self.lbda_window)) & \
+                    (self.spectrum.lbda < (lines.max()*(1+redshift_init) + self.lbda_window))
         
         data = self.spectrum.data[lbda_flag].copy()
         data["lbda_x"] = ((data["lbda"].values - data["lbda"].min())/(data["lbda"].max() - data["lbda"].min()) - 0.5)*2
@@ -477,6 +508,14 @@ class LineFitter( object ):
         
         results = dataout.join(cov)
         return results
+
+    @property
+    def free_parameters(self):
+        """ """
+        if not hasattr(self,"_minuit"):
+            raise AttributeError("Minuit has not run yet.")
+        
+        return [k for k,v in self._minuit.fixed.to_dict().items() if not v]
     
     @property
     def param_names(self):

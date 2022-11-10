@@ -34,21 +34,35 @@ def get_typing(typings_values,
 def parse_classification(line, 
                          min_review=2,
                          min_autotyping=3, 
-                         min_generic_typing=4,
-                         unclear_limit=0.5):
+                         min_generic_typing=3,
+                         unclear_limit=0.5,
+                         to_unclear_limit=0.75,
+                         min_classifications_to_unclear=6,
+                         verbose=False):
     """ """
+    classification = "confusing"
+    if verbose:
+        print(line)
+        print(line["typing"])
+        print("unclear" in line["typing"])
     # not enough review, pass
     if line.nreviews <= min_review: # not enough
+        if verbose:
+            print("not enough classification")
         classification = "None"
         
     # easy, all the same 
-    elif line.ntypes == 1 and line.ntypings[0] >= min_autotyping: 
+    elif line.ntypes == 1 and line.ntypings[0] >= min_autotyping:
+        if verbose:
+            print("all the same")
         classification =  line.typing[0]
 
     # special save for ia-norm cases.
         
     # enough for generic, let's see if it's sufficient.        
-    elif line.nreviews >=min_generic_typing:
+    elif line.nreviews >= min_generic_typing:
+        if verbose:
+            print("enough for generic review")
         # go back to the easy-case
         if "ia-norm" in line.typing and np.all([k in ["ia-norm", "sn ia", "unclear"] for k in line.typing]) \
           and line.ntypings[ list(line.typing).index("ia-norm") ] >= min_autotyping:
@@ -69,21 +83,43 @@ def parse_classification(line,
             classification = "confusing"
             
     # saving unclears if possible
-    elif "unclear" in line["typing"]:
+    # try to save remaining confusing cases
+    if classification == "confusing" and "unclear" in line["typing"]:
+        
+        if verbose:
+            print("trying to save confusing cases")
+            print("unclear" in line["typing"])
+            
         info = dict(zip(line["typing"],line["ntypings"]))
         n_unclears = info["unclear"] 
         n_not = np.sum([v for k,v in info.items() if k !="unclear"])
-
-        if n_unclears < (n_unclears+n_not)*unclear_limit and n_not >min_generic_typing:
-            new_line = clear_unclear(line)
-            classification = parse_classification(new_line)
-        else:
-            classification = "confusing"
+        n_classifications = n_unclears + n_not
+        f_unclear = n_unclears / (n_classifications)
+        f_not = 1-f_unclear
+        if verbose:
+            print(f"fraction of confusing: {f_unclear}" )
             
-    # Typing ok, Sub-tyiping not        
-    else:
-        classification = "confusing"
-        
+        # more than 4 classification agreed when unclear discarded.
+        if f_unclear <= unclear_limit and n_not >=min_generic_typing:
+            if verbose:
+                print(f"saving this case" )
+
+            new_line = clear_unclear(line.copy())
+            classification = parse_classification(new_line)
+
+        # At least 6 classification and more than 4 (if to_unclear_limit==0.75) are 'unclear'
+        elif f_unclear >= to_unclear_limit and n_classifications >= min_classifications_to_unclear:
+            if verbose:
+                print(f"saving this case as 'unclear' ")
+            classification = "unclear"
+        elif n_not <= min_review:
+            if verbose:
+                print(f"saving this case as 'None' ")
+            classification = "None"
+            
+        if verbose:
+            print(f"cannot save this case ( {f_unclear} > {to_unclear_limit} & {n_classifications}>{n_classifications}")
+
     return classification
 
 
@@ -168,6 +204,10 @@ class Classifications( _DBApp_ ):
     MASTER_USER = ["jesper", "Joel Johansson", "Kate Maguire",
                    "Mathew Smith", "Umut", "Georgios Dimitriadis"]
 
+
+    CLASSIFIED_KEY = ["ia-norm", "ia-pec", "ia", "sn ia", "ia_or_ianorm"]
+    IA_PEC = ["ia-91bg","ia-91t","ia-other"]
+        
     def load(self):
         """ """
         self._data = self.data_from_db(sql="where kind='typing'")
@@ -182,6 +222,7 @@ class Classifications( _DBApp_ ):
         """ """
         if "classification" not in self.data:
             self.load_classification(**kwargs)
+            
         data = self.get_classification_df()
         classification = self.data.groupby("target_name").first()["classification"]
         data = data.join(classification)
@@ -190,7 +231,7 @@ class Classifications( _DBApp_ ):
 
     def load_classification(self, min_review=2,
                                   min_autotyping=3,
-                                  min_generic_typing=4,
+                                  min_generic_typing=3,
                                 # Master keys
                                   min_review_master=1,
                                   min_autotyping_master=2,
@@ -202,28 +243,46 @@ class Classifications( _DBApp_ ):
         master = self.get_masterclassification(False)
         master._load_classification(min_review=min_review_master, min_autotyping=min_autotyping_master,
                                   min_generic_typing=min_generic_typing_master)
+        
         # master successful classifications
         mdata = master.data[~master.data["classification"].isin(["None","confusing"])
                             ].groupby("target_name").first()["classification"]
-        mdata.name = "master_classification"        
+        mdata.name = "master_classification"
 
-        data = self.data.set_index("target_name")
+
+        # Arbiter
+        report = Reports()
+        dataarbiter = report.data[report.data["value"].str.startswith("arbiter")].copy()
+        dataarbiter["arbiter_classification"] = dataarbiter["value"].str.replace("arbiter:","")
+        a = dataarbiter["arbiter_classification"].str.replace("^ia","ia-", regex=True).replace("gal","nonia",regex=False)
+        a[a=="ia-"] = "ia"
+        dataarbiter["arbiter_classification"] = a.copy()
+        # cleaning naming conventio
+        # This has target_name as index
+        adata = dataarbiter.groupby("target_name")["arbiter_classification"].first() # early issue, all agree, tested
         
-        # merged
-        datamerged = data.join(mdata).reset_index()
+        #
+        # merging
+        #
+        data = self.data.set_index("target_name") # target_name as index
+        datamerged = data.join(mdata).join(adata).reset_index()
         datamerged["auto_classification"] = datamerged["classification"]
+        # merge master
         mclassified = datamerged[~datamerged["master_classification"].isna()]["master_classification"]
         datamerged.loc[mclassified.index, "classification"] = mclassified
+
+        # merge arbiter
+        aclassified = datamerged[~datamerged["arbiter_classification"].isna()]["arbiter_classification"]
+        datamerged.loc[aclassified.index, "classification"] = aclassified
         
         self._data = datamerged
         
         
-    def _load_classification(self, min_review=2, min_autotyping=3, min_generic_typing=4):
+    def _load_classification(self, **kwargs):
         # Normal
         class_df = self.get_classification_df()
         class_df["classification"] = class_df.apply(parse_classification, axis=1,
-                                                    min_review=min_review, min_autotyping=min_autotyping,
-                                                    min_generic_typing=min_generic_typing)
+                                                    **kwargs)
 
         # are you reloading ?
         if "classification" in self.data:
@@ -374,9 +433,8 @@ class Classifications( _DBApp_ ):
         class_stat = self.get_classification_stats( based_on, redshift_range=redshift_range,
                                                     **dataprop)
 
-        CLASSIFIED_KEY = ["ia-norm", "ia-pec", "ia", "sn ia", "ia_or_ianorm"]
-        class_stat["ia-pec"] = class_stat[["ia-91bg","ia-91t","ia-other"]].sum()
-        class_stat["classified"] = class_stat[CLASSIFIED_KEY].sum()
+        class_stat["ia-pec"] = class_stat[self.IA_PEC].sum()
+        class_stat["classified"] = class_stat[self.CLASSIFIED_KEY].sum()
         class_stat["non ia"] = class_stat[[k for k in self._NONIA_CASES if k in class_stat]].sum()
 
         # showing plots
@@ -405,7 +463,7 @@ class Classifications( _DBApp_ ):
                      fontsize="large", ha="center", va="bottom")
 
         # -> sub plot
-        to_show = CLASSIFIED_KEY
+        to_show = self.CLASSIFIED_KEY
         data_show = class_stat[to_show]
         if type(explode) == float:
             explode = np.full_like(data_show.values, explode, dtype="float")

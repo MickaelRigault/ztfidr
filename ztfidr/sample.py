@@ -275,7 +275,7 @@ class Sample():
         """ """
         from . import target
         lightcurve = self.get_target_lightcurve(name)
-        spectra = self.get_target_spectra(name, as_spectra=True)
+        spectra = self.get_target_spectra(name, as_spectra=False)
         meta = self.data.loc[name]
         return target.Target(lightcurve, spectra, meta=meta)
 
