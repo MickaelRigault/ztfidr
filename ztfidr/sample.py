@@ -17,7 +17,7 @@ class Sample():
         self.set_data(data)
     
     @classmethod
-    def load(cls, redshift_range=None, target_list=None):
+    def load(cls, redshift_range=None, target_list=None, has_spectra=True):
         """ Load a Sample instance building it from io.get_targets_data() """
         data = io.get_targets_data()
         if redshift_range is not None:
@@ -25,6 +25,10 @@ class Sample():
 
         if target_list is not None:
             data = data.loc[target_list]
+
+        if has_spectra:
+            specfile = io.get_spectra_datafile()
+            data = data[data.index.isin(specfile["ztfname"])]
             
         return cls(data=data)
 
