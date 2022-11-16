@@ -27,7 +27,7 @@ class Sample():
             data = data.loc[target_list]
 
         if has_spectra:
-            specfile = io.get_spectra_datafile()
+            specfile = io.get_spectra_datafile(data=data)
             data = data[data.index.isin(specfile["ztfname"])]
             
         return cls(data=data)

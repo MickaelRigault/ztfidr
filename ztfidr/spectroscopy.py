@@ -16,6 +16,45 @@ def get_target_spectra(name, load_snidres=True, **kwargs):
                                             **kwargs)
                         )
 
+
+def get_heliocentric_correction(ra, dec, time, site, tformat=None):
+    """ get the observer frame to helio centric correction (in km/s) 
+    
+    See astropy.coordinates.SkyCoord.radial_velocity_correction
+    from https://docs.astropy.org/en/stable/api/astropy.coordinates.SkyCoord.html
+
+    Parameters
+    ----------
+    ra, dec: float or array
+        coordinates in degree
+
+    time: float or array
+        when the observation was taken. Inputs astropy.time.Time
+
+    tformat: str
+        format of the input time (goes to format option of astropy.time.Time)
+
+    site: str
+        observatory location, e.g. 'palomar'. 
+        goes to astropy's EarthLocation.of_site(site)
+
+    Returns
+    -------
+    float or array
+        heliocentric correction in km/s
+    """
+    from astropy.time import Time
+    from astropy.coordinates import SkyCoord, EarthLocation
+    
+    observatory = EarthLocation.of_site(site)
+    sc = SkyCoord(ra, dec, unit="deg")
+    obstime = Time(time, format=tformat)
+    heliocorr = sc.radial_velocity_correction(kind="heliocentric", obstime=obstime, location=observatory).to("km/s").value
+    return heliocorr
+
+
+
+
 def read_spectrum(file_, sep=None):
     """ """
     data = open(file_).read().splitlines()

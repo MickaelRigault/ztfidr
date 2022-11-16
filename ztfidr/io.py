@@ -105,7 +105,7 @@ def get_nospectralist(load=True, **kwargs):
 
 
 # Redshifts
-def get_redshif_data(load=True, index_col=0, **kwargs):
+def get_redshif_data(load=True, index_col=0, full=False, **kwargs):
     """ """
     filepath = os.path.join(IDR_PATH, "tables",
                             "ztfdr2_redshifts.csv")
@@ -114,8 +114,35 @@ def get_redshif_data(load=True, index_col=0, **kwargs):
     
     data = pandas.read_csv(filepath, index_col=index_col, **kwargs)
     data.index.name = 'ztfname'
-    return data
 
+    if not full: # get only redshift and source
+        return data
+    
+    # or get them all:
+    redshift_dir = os.path.join(IDR_PATH, "tables", ".dataset_creation/redshifts")
+    redshifts = {}
+    # Emission lines
+    redshifts["sedm_hanii"] = pandas.read_csv(os.path.join(redshift_dir,
+                                                    "specfile_sedm_emissionlines.csv"),
+                                     index_col=0)
+    
+    redshifts["nosedm_hanii"] = pandas.read_csv(os.path.join(redshift_dir,
+                                                    "specfile_nonsedm_emissionlines.csv"),
+                                     index_col=0)
+    # SNID
+    redshifts["snidauto"] = pandas.read_csv(os.path.join(redshift_dir,
+                                                    "ztfdr2_snid_redshifts.csv"),
+                                     index_col=0)
+    # Host-Z
+    redshifts["hostz"] = pandas.read_csv(os.path.join(redshift_dir,
+                                                    "ztfdr2_hostz_redshifts.csv"),
+                                     index_col=0)
+    # override
+    redshifts["hostz"] = pandas.read_csv(os.path.join(redshift_dir,
+                                                    "ztfdr2_override_redshifts.csv"),
+                                     index_col=0)
+    return data, redshifts
+    
 def get_snidauto_redshift(load=True, **kwargs):
     """ """
     filepath = os.path.join(IDR_PATH,"tables",
@@ -124,6 +151,9 @@ def get_snidauto_redshift(load=True, **kwargs):
         return filepath
     
     return pandas.read_csv(filepath, index_col=0, **kwargs)
+
+
+
 
 # Coordinates
 def get_coords_data(load=True, index_col=0, **kwargs):
@@ -269,7 +299,8 @@ def get_autotyping(load=True, index_col=0, **kwargs):
 
 
 def get_spectra_datafile(contains=None, startswith=None,
-                         snidres=False, extension=None, use_dask=False):
+                         snidres=False, extension=None, use_dask=False,
+                         add_phase=True, data=None):
     """ """
     from glob import glob
     glob_format = "*" if not startswith else f"{startswith}*"
@@ -288,7 +319,19 @@ def get_spectra_datafile(contains=None, startswith=None,
     datafile["basename"] = datafile["fullpath"].str.split(
         "/", expand=True).iloc[:, -1]
 
-    return pandas.concat([datafile, parse_filename(datafile["basename"], snidres=snidres)], axis=1)
+
+    specfile = pandas.concat([datafile, parse_filename(datafile["basename"], snidres=snidres)], axis=1)
+    if add_phase:
+        from astropy.time import Time
+        if data is None:
+            from .sample import get_sample
+            data = get_sample().data
+            
+        specfile["dateiso"] = Time(np.asarray(specfile["date"].apply(lambda x: f"{x[:4]}-{x[4:6]}-{x[6:]}"), dtype=str), format="iso").mjd
+        specfile = specfile.join(data["t0"], on="ztfname")
+        specfile["phase"] = specfile.pop("dateiso")-specfile.pop("t0")
+
+    return specfile
 
 
 def parse_filename(file_s, snidres=False):
