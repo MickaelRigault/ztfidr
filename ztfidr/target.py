@@ -99,22 +99,17 @@ class Target():
         return df_types
 
     def fit_snid(self, delta_phase=5, lbda_range=[4000, 8000],
-                       redshift_source=['host_cat', 'override', 'ha_nii'],
-                       set_it=True,
+                     redshift=None, set_it=True, 
                      **kwargs):
         """ fit SNID constraining redshift and phase """
 
         # Redshift input
-        redshift, source = self.get_redshift()
-        if redshift_source is None or source not in redshift_source:
-            redshift = None
-
         # Phase
         snidres = []
         for spec_ in np.atleast_1d(self.spectra):
             phase = spec_.get_phase( self.meta["t0"] )
             snidres_ = spec_.fit_snid(phase=phase, redshift=redshift,
-                                          delta_phase=delta_phase, lbda_range=lbda_range)
+                                      delta_phase=delta_phase, lbda_range=lbda_range)
             if set_it:
                 spec_.set_snidresult(snidres_)
             
