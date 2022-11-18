@@ -107,7 +107,7 @@ class Target():
         # Phase
         snidres = []
         for spec_ in np.atleast_1d(self.spectra):
-            if use_phase;
+            if use_phase:
                 phase = spec_.get_phase( self.meta["t0"] )
             else:
                 phase = None
