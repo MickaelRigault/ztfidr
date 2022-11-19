@@ -29,6 +29,15 @@ def get_typing(typings_values,
     ltypings.sort(key = lambda i: sort_favored.index(i))
     return ltypings[0]
 
+def get_specs_to_rm():
+    """ get the list of spectra flaged as 'to remove' in the typingapp """
+    report = Reports()
+    rmspec_serie = report.data[(report.data["value"].str.startswith("spec:rm")) &
+                               (~report.data["value"].str.contains("none_left"))]
+    rmspecs = np.asarray(rmspec_serie["value"].str.replace("spec:rm:","").values, dtype=str)
+    return rmspecs
+
+
 
 def merge_classifications(line):
     """ """

@@ -300,7 +300,7 @@ def get_autotyping(load=True, index_col=0, **kwargs):
 
 def get_spectra_datafile(contains=None, startswith=None,
                          snidres=False, extension=None, use_dask=False,
-                         add_phase=True, data=None):
+                         add_phase=True, data=None, discard_rmspec=True):
     """ """
     from glob import glob
     glob_format = "*" if not startswith else f"{startswith}*"
@@ -318,9 +318,11 @@ def get_spectra_datafile(contains=None, startswith=None,
     datafile = pandas.DataFrame(specfiles, columns=["fullpath"])
     datafile["basename"] = datafile["fullpath"].str.split(
         "/", expand=True).iloc[:, -1]
-
-
+    
     specfile = pandas.concat([datafile, parse_filename(datafile["basename"], snidres=snidres)], axis=1)
+    
+
+    
     if add_phase:
         from astropy.time import Time
         if data is None:
@@ -331,6 +333,13 @@ def get_spectra_datafile(contains=None, startswith=None,
         specfile = specfile.join(data["t0"], on="ztfname")
         specfile["phase"] = specfile.pop("dateiso")-specfile.pop("t0")
 
+    # discard of not ?
+    if discard_rmspec:
+        from .typing import get_specs_to_rm
+        rmspecs = get_specs_to_rm()
+        specfile = specfile[~specfile["basename"].str.lower().isin(rmspecs)]
+
+        
     return specfile
 
 
