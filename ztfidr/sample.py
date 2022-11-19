@@ -274,6 +274,20 @@ class Sample():
             
         return data
 
+    def get_ianorm(self, incl_snia=False):
+        """ get the list targets that are ia-norm or ia(-norm) (or sn ia if incl_snia=True)
+        
+        Returns
+        -------
+        array
+            list of targetname (data.index)
+        """
+        classifications = ["ia-norm","ia(-norm)"]
+        if incl_snia:
+            classifications += ["sn ia"]
+            
+        return np.asarray(self.data[self.data["classification"].isin(classifications)].index)
+    
     # Target | High level
     def get_target(self, name):
         """ """
