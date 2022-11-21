@@ -111,6 +111,7 @@ class Target():
                 phase = spec_.get_phase( self.meta["t0"] )
             else:
                 phase = None
+                
             snidres_ = spec_.fit_snid(phase=phase, redshift=redshift,
                                       delta_phase=delta_phase, lbda_range=lbda_range)
             if set_it:

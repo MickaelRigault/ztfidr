@@ -298,6 +298,14 @@ def get_autotyping(load=True, index_col=0, **kwargs):
     return pandas.read_csv(filepath, index_col=index_col, **kwargs)
 
 
+def get_spectra_to_remove(load=True, index_col=0, **kwargs):
+    """ """
+    filepath = os.path.join(IDR_PATH, "tables",
+                            ".dataset_creation/spectra/spec_to_remove.csv")
+    if not load:
+        return filepath
+    return pandas.read_csv(filepath, index_col=index_col, **kwargs)
+
 def get_spectra_datafile(contains=None, startswith=None,
                          snidres=False, extension=None, use_dask=False,
                          add_phase=True, data=None, discard_rmspec=True):
@@ -335,8 +343,7 @@ def get_spectra_datafile(contains=None, startswith=None,
 
     # discard of not ?
     if discard_rmspec:
-        from .typing import get_specs_to_rm
-        rmspecs = get_specs_to_rm()
+        rmspecs = get_spectra_to_remove()["basename"].values
         specfile = specfile[~specfile["basename"].str.lower().isin(rmspecs)]
 
         
