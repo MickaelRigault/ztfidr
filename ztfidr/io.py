@@ -121,27 +121,55 @@ def get_redshif_data(load=True, index_col=0, full=False, **kwargs):
     # or get them all:
     redshift_dir = os.path.join(IDR_PATH, "tables", ".dataset_creation/redshifts")
     redshifts = {}
-    # Emission lines
-    redshifts["sedm_hanii"] = pandas.read_csv(os.path.join(redshift_dir,
-                                                    "specfile_sedm_emissionlines.csv"),
-                                     index_col=0)
+
     
-    redshifts["nosedm_hanii"] = pandas.read_csv(os.path.join(redshift_dir,
+    # Emission lines
+    sedm_em = pandas.read_csv(os.path.join(redshift_dir,
+                                            "specfile_sedm_emissionlines.csv"),
+                                  index_col=0)
+    sedm_em = sedm_em.set_index("ztfname")[["sedmredshift","sedmredshift_err"]].copy()#.rename("sedmredshift","sedm_em", axis=1)
+    sedm_em.columns = sedm_em.columns.str.replace("sedmredshift","sedm_em")
+    
+    
+    
+    nosedm_em = pandas.read_csv(os.path.join(redshift_dir,
                                                     "specfile_nonsedm_emissionlines.csv"),
                                      index_col=0)
+    nosedm_em = nosedm_em.set_index("ztfname")[["value","error"]].copy()#.rename("sedmredshift","sedm_em", axis=1)
+    nosedm_em.columns = ["nonsedm_em", "nonsedm_em_err"]
+    
     # SNID
-    redshifts["snidauto"] = pandas.read_csv(os.path.join(redshift_dir,
+    snidauto = pandas.read_csv(os.path.join(redshift_dir,
                                                     "ztfdr2_snid_redshifts.csv"),
                                      index_col=0)
+    snidauto.columns = snidauto.columns.str.replace("redshift","snidauto")
+    
     # Host-Z
-    redshifts["hostz"] = pandas.read_csv(os.path.join(redshift_dir,
+    hostz = pandas.read_csv(os.path.join(redshift_dir,
                                                     "ztfdr2_hostz_redshifts.csv"),
                                      index_col=0)
+    hostz = hostz[["redshift"]]
+    hostz.columns = ["host_cat"]
+    hostz["host_cat_err"] = 1e-5
+
+
+    
     # override
-    redshifts["hostz"] = pandas.read_csv(os.path.join(redshift_dir,
+    override = pandas.read_csv(os.path.join(redshift_dir,
                                                     "ztfdr2_override_redshifts.csv"),
                                      index_col=0)
-    return data, redshifts
+    override.columns = ["override"]
+
+    # merge them
+    
+    data = data.join(sedm_em, on="ztfname")
+    data = data.join(nosedm_em, on="ztfname")
+    data = data.join(snidauto, on="ztfname")
+    data = data.join(hostz, on="ztfname")
+    data = data.join(override, on="ztfname")
+    data
+    
+    return data
     
 def get_snidauto_redshift(load=True, **kwargs):
     """ """
@@ -151,8 +179,6 @@ def get_snidauto_redshift(load=True, **kwargs):
         return filepath
     
     return pandas.read_csv(filepath, index_col=0, **kwargs)
-
-
 
 
 # Coordinates
