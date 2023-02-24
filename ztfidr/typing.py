@@ -57,7 +57,7 @@ def parse_classification(line,
                          unclear_limit=0.5,
                          to_unclear_limit=0.75,
                          min_classifications_to_unclear=6,
-                         verbose=False, add_origin=False):
+                         verbose=False, add_origin=False, skipsave=False):
     """ """
     classification = "confusing"
 
@@ -112,10 +112,25 @@ def parse_classification(line,
     else:
         level = -1
 
+
     # Level 3            
     # saving unclears if possible
     # try to save remaining confusing cases
-    if classification == "confusing" and "unclear" in line["typing"]:
+    if classification == "ia(-?)" and not skipsave:
+        # remove generic cases
+        new_line = clear_line(line.copy(), ["unclear", "sn ia"])
+        classification, _ = parse_classification(new_line, skipsave=True)
+        # Could not be saved:
+        if classification in ["None", "unclear", "confusing","ia(-?)"]:
+            classification = "ia(-?)"
+        else:
+            if verbose:
+                print(f"ia(-?) classification became {classification}")
+            
+    # Level 3            
+    # saving unclears if possible
+    # try to save remaining confusing cases
+    elif classification == "confusing" and "unclear" in line["typing"]:
         
         if verbose:
             print("trying to save confusing cases")
@@ -135,7 +150,7 @@ def parse_classification(line,
             if verbose:
                 print(f"saving this case" )
 
-            new_line = clear_unclear(line.copy())
+            new_line = clear_line(line.copy())
             classification, _ = parse_classification(new_line)
 
         # At least 6 classification and more than 4 (if to_unclear_limit==0.75) are 'unclear'
@@ -152,20 +167,61 @@ def parse_classification(line,
             print(f"cannot save this case ( {f_unclear} > {to_unclear_limit} & {n_classifications}>{n_classifications}")
 
         level = 3
-        
+
+    # Back to saving the rest:
+    if classification == "None":
+        if line.nreviews >= 2:
+            # 2 unclears or more
+            if np.all([k in ["unclear"] for k in line.typing]):
+                classification = "unclear"
+                if verbose:
+                    print(f"saving None to {classification}")
+                
+            else:
+                line = clear_line(line, "unclear")
+                # still have 2 or more entries
+                if line.nreviews >= 2:
+                    # No ?
+                    # let's remove the unclear then, and let's see:
+                    line = clear_line(line, "unclear")
+                    # All the same
+                    if line.ntypes == 1:
+                        classification =  line.typing[0]
+                        if verbose:
+                            print(f"saving None to {classification}")
+                
+                    elif np.all([k in ["ia-norm", "sn ia"] for k in line.typing]):
+                        classification = "ia(-norm)"
+                        if verbose:                        
+                            print(f"saving None to {classification}")
+                
+                    elif np.all([k in ["unclear"] for k in line.typing]):
+                        classification = "unclear"
+                        if verbose:                        
+                            print(f"saving None to {classification}")
+                
+                    elif np.all(['ia' in k and "not ia" not in k for k in line.typing]):
+                        classification = "ia(-?)"
+                        if verbose:
+                            print(f"saving None to {classification}")
+                
     return classification, level
 
 
-def clear_unclear(line):
+def clear_line(line, rm_value="unclear"):
     """ remove the 'unclear' component from the given typing row """
     typing = list(line.typing)
-    if "unclear" not in typing:
-        return line # nothing to do
+#    if "unclear" not in typing:
+#        return line # nothing to do
     
     ntypings = list(line.ntypings)
-    index_unclear = typing.index("unclear")
-    typing.pop(index_unclear)
-    ntypings.pop(index_unclear)
+    for value in np.atleast_1d(rm_value):
+        if value not in typing:
+            continue
+        index_unclear = typing.index(value)
+        typing.pop(index_unclear)
+        ntypings.pop(index_unclear)
+        
     return pandas.Series({"typing": typing,
                           "ntypings": ntypings,
                           "ntypes": len(ntypings),

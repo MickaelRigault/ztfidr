@@ -79,6 +79,7 @@ class LightCurve( object ):
         if targetname is None:
             warnings.warn("Unknown targetname (=None) ; use manually set_salt2param()")
             return None
+        
         from .salt2 import get_target_salt2param
         salt2param = get_target_salt2param(targetname)
         self.set_salt2param(salt2param)
@@ -147,6 +148,7 @@ class LightCurve( object ):
             1024: flux/flux_err>=5: Nominal detection
 
         """
+        from .utils import flux_to_mag
 
         if flagout in ["all","any","*"]:
             data = self.data[self.data["flag"]==0]
@@ -172,10 +174,13 @@ class LightCurve( object ):
         detection = flux/error
             
         
-        lcdata = data[["mjd","mag","mag_err","filter","field_id","x_pos","y_pos", "flag","mag_lim"]]
-        additional = pandas.DataFrame(np.asarray([zp, flux,error, detection]).T,
+        lcdata = data[["mjd","mag","mag_err","filter","field_id","x_pos","y_pos", "flag"]]
+        additional = pandas.DataFrame(np.asarray([zp, flux, error, detection]).T,
                                          columns=["zp", "flux", "error", "detection"],
                                          index=lcdata.index)
+        
+        additional["mag_lim"], _ = flux_to_mag(error*5, None, zp=zp)
+        
         lcdata = pandas.merge(lcdata, additional, left_index=True, right_index=True)
 #        lcdata.loc["zp",:] = zp
 #        lcdata["flux"] = flux

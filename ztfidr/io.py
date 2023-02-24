@@ -180,6 +180,14 @@ def get_snidauto_redshift(load=True, **kwargs):
     
     return pandas.read_csv(filepath, index_col=0, **kwargs)
 
+def get_snidauto_specfile_redshift(load=True, **kwargs):
+    """ """
+    filepath = os.path.join(IDR_PATH,"tables",
+                                ".dataset_creation/redshifts/snidauto_ianorm.csv")
+    if not load:
+        return filepath
+    
+    return pandas.read_csv(filepath, index_col=0, **kwargs)
 
 # Coordinates
 def get_coords_data(load=True, index_col=0, **kwargs):
