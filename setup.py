@@ -10,7 +10,7 @@ from setuptools import setup, find_packages
 
 packages = find_packages()
 
-VERSION = '0.7.15'
+VERSION = '0.7.16'
         
 setup(name='ztfidr',
       version=VERSION,
