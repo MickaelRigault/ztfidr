@@ -124,7 +124,7 @@ class LightCurve( object ):
     def get_lcdata(self, zp=None, in_mjdrange=None,
                        min_detection=None,
                        filters=None,
-                       flagout=[1,2,4,8,256]):
+                       flagout=[1,2,4,8,16]):
         """ 
         filters: [string, None or list]
             list of filters 
