@@ -68,7 +68,7 @@ def get_targetlist(load=True, **kwargs):
 def get_target_typing(load=True, index_col=0, sep=" ",
                           clean=True, **kwargs):
     """ """
-    filepath = os.path.join(IDR_PATH, "tables",
+    filepath = os.path.join(IDR_PATH, "tables/.dataset_creation/sample_def",
                             "ztfdr2_typing.csv")
     if not load:
         return filepath

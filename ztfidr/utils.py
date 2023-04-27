@@ -86,3 +86,47 @@ def flux_to_mag(flux, dflux, wavelength=None, zp=None, inhz=False):
     
     dmag_ab = +2.5/np.log(10) * dflux / flux
     return mag_ab, dmag_ab
+
+
+
+def hist_colorbar(data, ax=None, vmin=None, vmax=None, bins="auto", 
+                     fcolorbar=0.05, cmap="cividis", alpha=None,
+                      clear_axes=True):
+    """ """
+    if vmin is None:
+        vmin = np.nanmin(data)
+    if vmax is None:
+        vmax = np.nanmax(data)
+        
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import Normalize
+
+    cmap = plt.colormaps[cmap]
+
+    intensity, binegdes = np.histogram(data, range=[vmin, vmax], bins=bins)
+    bins = {"edge":binegdes,
+            "centroid":np.mean([binegdes[1:],binegdes[:-1]], axis=0),
+            "width":binegdes[1:]-binegdes[:-1]}
+
+    if ax is None:
+        fig = plt.figure(figsize=[6,5])
+        ax = fig.add_axes([0.1,0.15,0.8,0.75])
+    else:
+        fig = ax.figure
+
+    norm = Normalize(vmin=vmin, vmax=vmax)
+    colors = cmap(norm(bins["centroid"]))
+    floor = np.max(intensity)*fcolorbar
+
+    bar = ax.bar(bins["centroid"], intensity+floor, 
+                        width=bins["width"], color=colors,
+                   alpha=alpha)
+    ax.axhline(floor, color="w", lw=1)
+    ax.set_yticks([])
+    ax.set_xlim(vmin, vmax)
+    if clear_axes:
+        clearwhich = ["left","right","top", "bottom"]
+        [ax.spines[which].set_visible(False) for which in clearwhich]
+
+    
+    return ax
