@@ -132,7 +132,11 @@ class Sample():
         = Most likely you should not use this method directly. =
         use sample = Sample.load()
         """
-        data["t0day"] = data["t0"].astype("int")
+        try:
+            data["t0day"] = data["t0"].astype("int")
+        except:
+            data["t0day"] = data["t0"]
+            
         self._data = data
 
     def set_hostdata(self, hostdata):

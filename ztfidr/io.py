@@ -332,17 +332,9 @@ def get_autotyping(load=True, index_col=0, **kwargs):
     return pandas.read_csv(filepath, index_col=index_col, **kwargs)
 
 
-def get_spectra_to_remove(load=True, index_col=0, **kwargs):
-    """ """
-    filepath = os.path.join(IDR_PATH, "tables",
-                            ".dataset_creation/spectra/spec_to_remove.csv")
-    if not load:
-        return filepath
-    return pandas.read_csv(filepath, index_col=index_col, **kwargs)
-
 def get_spectra_datafile(contains=None, startswith=None,
                          snidres=False, extension=None, use_dask=False,
-                         add_phase=True, data=None, discard_rmspec=True):
+                         add_phase=True, data=None):
     """ """
     from glob import glob
     glob_format = "*" if not startswith else f"{startswith}*"
@@ -363,8 +355,6 @@ def get_spectra_datafile(contains=None, startswith=None,
     
     specfile = pandas.concat([datafile, parse_filename(datafile["basename"], snidres=snidres)], axis=1)
     
-
-    
     if add_phase:
         from astropy.time import Time
         if data is None:
@@ -374,12 +364,6 @@ def get_spectra_datafile(contains=None, startswith=None,
         specfile["dateiso"] = Time(np.asarray(specfile["date"].apply(lambda x: f"{x[:4]}-{x[4:6]}-{x[6:]}"), dtype=str), format="iso").mjd
         specfile = specfile.join(data["t0"], on="ztfname")
         specfile["phase"] = specfile.pop("dateiso")-specfile.pop("t0")
-
-    # discard of not ?
-    if discard_rmspec:
-        rmspecs = get_spectra_to_remove()["basename"].values
-        specfile = specfile[~specfile["basename"].str.lower().isin(rmspecs)]
-
         
     return specfile
 
