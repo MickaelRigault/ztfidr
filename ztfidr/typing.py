@@ -318,8 +318,13 @@ class Classifications( _DBApp_ ):
     def __init__(self, in_targetlist=None):
         """ """
         _ = super().__init__()
+        
         if in_targetlist is not None:
             self._data = self._data[self._data["target_name"].isin(in_targetlist)]
+            self._targetlist = self.data["target_name"].unique()
+        else:
+            self._targetlist = io.get_masterlist()
+            
     
     def load(self):
         """ """
@@ -331,7 +336,7 @@ class Classifications( _DBApp_ ):
         from . import get_sample
         self._sample = get_sample()
 
-    def store_typing(self, **kwargs):
+    def get_typing(self, **kwargs):
         """ """
         if "classification" not in self.data:
             self.load_classification(**kwargs)
@@ -339,14 +344,18 @@ class Classifications( _DBApp_ ):
         data = self.get_classification_df()
         classification = self.data.groupby("target_name").first()["classification"]
         data = data.join(classification)
+        return data
+    
+    def store_typing(self, **kwargs):
+        """ """
+        data = self.get_typing(**kwargs)
         return data.to_csv( io.get_target_typing(False), sep=" ")
         
 
     def load_classification(self, **kwargs):
         """ """
         classifications = self.get_classification(**kwargs)
-        self._data = self.data.join(classifications
-                                        , on="target_name")
+        self._data = self.data.join(classifications, on="target_name", how="outer")
         
     def get_classification(self, min_review=2,
                                   min_autotyping=3,
@@ -380,6 +389,8 @@ class Classifications( _DBApp_ ):
         cdata = pandas.DataFrame(auto_data["auto_classification"].values, index=auto_data.index, columns=["classification"])
         cdata["class_origin"] = "auto"
         cdata = cdata.join(auto_data)
+
+        # make sure it is full master list
         
         # - add master
         cdata.loc[master_data.index, "classification"] = master_data["master_classification"]
@@ -397,9 +408,9 @@ class Classifications( _DBApp_ ):
     def _get_classification(self, prefix="", **kwargs):
         # Normal
         class_df = self.get_classification_df()
-        return pandas.DataFrame(class_df.apply(parse_classification, axis=1, **kwargs).to_list(),
+        d_ = pandas.DataFrame(class_df.apply(parse_classification, axis=1, **kwargs).to_list(),
                                 columns=[f"{prefix}classification",f"{prefix}clevel"], index=class_df.index)
-        
+        return d_.reindex(list(self.target_list))
     # -------- #
     # GETTER   #
     # -------- #
@@ -634,7 +645,7 @@ class Classifications( _DBApp_ ):
     @property
     def target_list(self):
         """ """
-        return self.data["target_name"].unique()
+        return self._targetlist
     
     @property
     def types(self):
