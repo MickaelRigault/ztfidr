@@ -378,7 +378,7 @@ class Classifications( _DBApp_ ):
         master_data = master_data[~master_data["master_classification"].isin(["None","confusing"])]
 
         # Arbiter
-        arbiter_data = Reports.get_arbiters(prefix="arbiter_").groupby("target_name").first()[["arbiter_classification"]] # [[ to get a dataframe
+        arbiter_data = Reports.get_arbiters(prefix="arbiter_").groupby("target_name").last()[["arbiter_classification"]] # [[ to get a dataframe
         # - force in data list
         arbiter_data = arbiter_data.loc[ arbiter_data.index.isin(self.target_list) ]
 
