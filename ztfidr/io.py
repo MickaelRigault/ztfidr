@@ -350,8 +350,7 @@ def get_spectra_datafile(contains=None, startswith=None,
 
     specfiles = glob(os.path.join(IDR_PATH, "spectra", glob_format))
     datafile = pandas.DataFrame(specfiles, columns=["fullpath"])
-    datafile["basename"] = datafile["fullpath"].str.split(
-        "/", expand=True).iloc[:, -1]
+    datafile["basename"] = datafile["fullpath"].str.split(pat="/", expand=True).iloc[:, -1]
     
     specfile = pandas.concat([datafile, parse_filename(datafile["basename"], snidres=snidres)], axis=1)
     
