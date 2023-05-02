@@ -37,19 +37,6 @@ def get_specs_to_rm():
     rmspecs = np.asarray(rmspec_serie["value"].str.replace("spec:rm:","").values, dtype=str)
     return rmspecs
 
-
-
-def merge_classifications(line):
-    """ """
-    # First arbiter
-    if line.arbiter_classification is not np.NaN:
-        return line.arbiter_classification, 'arbiter'
-    # Second master    
-    elif line.master_classification not in ["unclear", "None"]:
-        return line.master_classification, 'master'
-    # Final, auto    
-    return line.auto_classification, "auto"
-
 def parse_classification(line, 
                          min_review=2,
                          min_autotyping=3, 
@@ -350,7 +337,6 @@ class Classifications( _DBApp_ ):
         """ """
         data = self.get_typing(**kwargs)
         return data.to_csv( io.get_target_typing(False), sep=" ")
-        
 
     def load_classification(self, **kwargs):
         """ """
@@ -367,7 +353,8 @@ class Classifications( _DBApp_ ):
         """ """
         # All auto | default
         auto_data = self._get_classification(prefix="auto_",
-                                                 min_review=2, min_autotyping=3, min_generic_typing=3)
+                                                 min_review=min_review, min_autotyping=min_autotyping,
+                                                 min_generic_typing=min_generic_typing)
 
         # Masters
         master = self.get_masterclassification(incl_unclear=False) # do not consider unclear's input
@@ -375,7 +362,6 @@ class Classifications( _DBApp_ ):
                                                       min_review=min_review_master, min_autotyping=min_autotyping_master,
                                                       min_generic_typing=min_generic_typing_master)
         # do not consider master's None or confusing. Only final classification
-        master_data = master_data[~master_data["master_classification"].isin(["None","confusing"])]
 
         # Arbiter
         arbiter_data = Reports.get_arbiters(prefix="arbiter_").groupby("target_name").last()[["arbiter_classification"]] # [[ to get a dataframe
@@ -389,14 +375,15 @@ class Classifications( _DBApp_ ):
         cdata = pandas.DataFrame(auto_data["auto_classification"].values, index=auto_data.index, columns=["classification"])
         cdata["class_origin"] = "auto"
         cdata = cdata.join(auto_data)
-
-        # make sure it is full master list
         
         # - add master
+        # do not consider bad cases
+        master_data = master_data[~master_data["master_classification"].isin(["None","confusing", np.NaN])]
+        
         cdata.loc[master_data.index, "classification"] = master_data["master_classification"]
         cdata.loc[master_data.index, "class_origin"] = "master"
         cdata = cdata.join(master_data)
-
+        
         # - add arbiter
         cdata.loc[arbiter_data.index, "classification"] = arbiter_data["arbiter_classification"]
         cdata.loc[arbiter_data.index, "class_origin"] = "arbiter"
@@ -405,7 +392,7 @@ class Classifications( _DBApp_ ):
         return cdata
         
         
-    def _get_classification(self, prefix="", **kwargs):
+    def _get_classification(self, prefix="", reindex=True, **kwargs):
         # Normal
         class_df = self.get_classification_df()
         d_ = pandas.DataFrame(class_df.apply(parse_classification, axis=1, **kwargs).to_list(),
