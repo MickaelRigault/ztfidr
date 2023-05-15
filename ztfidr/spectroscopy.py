@@ -269,13 +269,29 @@ class Spectrum( object ):
             
         return phase
 
-    def get_redshift(self):
+    def get_redshift(self, typing=None, verbose=False, **kwargs):
         """ """
         if self.snidresult is None:
             warnings.warn("snidres is not defined (None)")
             return [np.nan, np.nan]
 
-        return self.snidresult.get_redshift()
+        SNIDPARSE_TYPING = {"snia": "Ia",
+                            "snia-norm": "Ia-norm",
+                            "snia-pec-91t": "Ia-91T",
+                            "snia-pec-91bg": "Ia-91bg",
+                            "snia-pec": "Ia!norm",
+                            }
+        if typing is not None:
+            snid_typing = SNIDPARSE_TYPING.get(typing,None)
+            if snid_typing is None:
+                warnings.warn(f"Could not parse input {typing} typing")
+            elif verbose:
+                print(f"using snid_typing:{snid_typing} as input typing:{typing}")
+                
+        else:
+            snid_typing = None
+
+        return self.snidresult.get_redshift(typing=snid_typing, **kwargs)
 
     # --------- #
     #  FITTER   #
