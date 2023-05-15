@@ -329,7 +329,7 @@ class Classifications( _DBApp_ ):
             self.load_classification(**kwargs)
             
         data = self.get_classification_df()
-        classification = self.data.groupby("target_name").first()["classification"]
+        classification = self.data.groupby("target_name").first()[["classification","class_origin"]]
         data = data.join(classification)
         return data
     
@@ -343,13 +343,15 @@ class Classifications( _DBApp_ ):
         classifications = self.get_classification(**kwargs)
         self._data = self.data.join(classifications, on="target_name", how="outer")
         
-    def get_classification(self, min_review=2,
+    def get_classification(self,  min_review=2,
                                   min_autotyping=3,
                                   min_generic_typing=3,
                                 # Master keys
                                   min_review_master=1,
                                   min_autotyping_master=2,
-                                  min_generic_typing_master=3):
+                                  min_generic_typing_master=3,
+                               # arbiter
+                                 incl_arbiter=True):
         """ """
         # All auto | default
         auto_data = self._get_classification(prefix="auto_",
@@ -364,9 +366,7 @@ class Classifications( _DBApp_ ):
         # do not consider master's None or confusing. Only final classification
 
         # Arbiter
-        arbiter_data = Reports.get_arbiters(prefix="arbiter_").groupby("target_name").last()[["arbiter_classification"]] # [[ to get a dataframe
-        # - force in data list
-        arbiter_data = arbiter_data.loc[ arbiter_data.index.isin(self.target_list) ]
+        
 
         #
         # Now let's join
@@ -385,9 +385,14 @@ class Classifications( _DBApp_ ):
         cdata = cdata.join(master_data)
         
         # - add arbiter
-        cdata.loc[arbiter_data.index, "classification"] = arbiter_data["arbiter_classification"]
-        cdata.loc[arbiter_data.index, "class_origin"] = "arbiter"
-        cdata = cdata.join(arbiter_data)
+        if incl_arbiter:
+            arbiter_data = Reports.get_arbiters(prefix="arbiter_").groupby("target_name").last()[["arbiter_classification"]] # [[ to get a dataframe
+            # - force in data list
+            arbiter_data = arbiter_data.loc[ arbiter_data.index.isin(self.target_list) ]
+            
+            cdata.loc[arbiter_data.index, "classification"] = arbiter_data["arbiter_classification"]
+            cdata.loc[arbiter_data.index, "class_origin"] = "arbiter"
+            cdata = cdata.join(arbiter_data)
 
         return cdata
         

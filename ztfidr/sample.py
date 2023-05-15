@@ -308,6 +308,20 @@ class Sample():
         meta = self.data.loc[name]
         return target.Target(lightcurve, spectra, meta=meta)
 
+    def get_target_typing(self, name=None):
+        """ """
+        TYPING = {'sn ia': 'snia',
+                  'ia-norm': 'snia-norm',
+                  'ia(-norm)': 'snia-norm',
+                  'ia-91t':'snia-pec-91t',
+                  'ia-91bg':'snia-pec-91bg',
+                  'ia-other':'snia-pec'}
+
+        if name is None:
+            return self.data["classification"].apply(TYPING.get)
+
+        return self.data.loc[name]["classification"].apply(TYPING.get)
+    
     # LightCurve
     def get_target_lightcurve(self, name, **kwargs):
         """ Get the {name} LightCurve object """

@@ -19,12 +19,13 @@ def get_targets_data():
     redshifts = get_redshif_data()[["redshift","redshift_err", "source"]]
     salt2params = get_salt2params()
     coords = get_coords_data()
-#    
+    
     # merging
     data_ = pandas.merge(redshifts,salt2params, left_index=True, right_index=True,
                      suffixes=("","_salt"), how="outer")
     data_ = pandas.merge(data_, coords, left_index=True, right_index=True,
                          how="outer")
+    
     # force limit to target to use
     target_list = get_targetlist()
     data_ = data_.loc[target_list["ztfname"]]

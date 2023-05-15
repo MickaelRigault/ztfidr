@@ -81,6 +81,6 @@ def show_typingdistribution(sample, ax=None, fig=None):
     clearwhich = ["bottom","right","top",] # "bottom"
     [ax.spines[which].set_visible(False) for which in clearwhich]
     ax.set_xticks([])
-    ax.set_yticks([1,0,-1,-2], ["SN Ia\nnorm","SN Ia","SN Ia\npeculiar", "Unclear"])
+    ax.set_yticks([1,0,-1,-2], ["SN Ia\nnorm","SN Ia","SN Ia\npeculiar", "Unclear\nnon-ia"])
 
     return fig
