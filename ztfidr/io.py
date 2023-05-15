@@ -33,6 +33,9 @@ def get_targets_data():
     # adding classification
     typing = get_target_typing()
     data_ = data_.join(typing["classification"], how="left")
+
+
+    
     return data_
 
 def get_localhost_data(local_nkpc=2, which="mag"):
@@ -67,7 +70,8 @@ def get_targetlist(load=True, **kwargs):
     return pandas.read_csv(filepath, **kwargs)
 
 def get_target_typing(load=True, index_col=0, sep=" ",
-                          clean=True, **kwargs):
+                        clean=True, generic_typing=True,
+                          **kwargs):
     """ """
     filepath = os.path.join(IDR_PATH, "tables/.dataset_creation/sample_def",
                             "ztfdr2_typing.csv")
@@ -81,6 +85,17 @@ def get_target_typing(load=True, index_col=0, sep=" ",
         data["typing"] = data["typing"].str.split(" ")
         
         data["ntypings"] = data["ntypings"].str.replace("[","", regex=False).str.replace("]","", regex=False).str.split(" ")
+
+    if generic_typing:
+        TYPING = {'sn ia': 'snia',
+                  'ia-norm': 'snia-norm',
+                  'ia(-norm)': 'snia-norm',
+                  'ia-91t':'snia-pec-91t',
+                  'ia-91bg':'snia-pec-91bg',
+                  'ia-other':'snia-pec'}
+
+        data["classification"] = data["classification"].apply(TYPING.get)
+        
     return data
 
 # Master List

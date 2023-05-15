@@ -12,15 +12,13 @@ def get_sample(**kwargs):
 
 class Sample():
 
-    NON_IA_CLASSIFICATIONS = ["nonia","ib/c","unclear","confusing"]
     
     def __init__(self, data=None):
         """ """
         self.set_data(data)
     
     @classmethod
-    def load(cls, redshift_range=None, target_list=None, has_spectra=True,
-                 rm_nonia=False):
+    def load(cls, redshift_range=None, target_list=None, has_spectra=True):
         """ Load a Sample instance building it from io.get_targets_data() """
         data = io.get_targets_data()
         
@@ -33,9 +31,6 @@ class Sample():
         if has_spectra:
             specfile = io.get_spectra_datafile(data=data)
             data = data[data.index.isin(specfile["ztfname"])]
-
-        if rm_nonia:
-            data = data[~data["classification"].isin(cls.NON_IA_CLASSIFICATIONS)]
             
         return cls(data=data)
 
@@ -286,16 +281,16 @@ class Sample():
         return data
 
     def get_ianorm(self, incl_snia=False):
-        """ get the list targets that are ia-norm or ia(-norm) (or sn ia if incl_snia=True)
+        """ get the list targets that are ia-norm (or sn ia if incl_snia=True)
         
         Returns
         -------
         array
             list of targetname (data.index)
-        """
-        classifications = ["ia-norm","ia(-norm)"]
+        """        
+        classifications = ["snia-norm"]
         if incl_snia:
-            classifications += ["sn ia"]
+            classifications += ["snia"]
             
         return np.asarray(self.data[self.data["classification"].isin(classifications)].index)
     
@@ -310,17 +305,10 @@ class Sample():
 
     def get_target_typing(self, name=None):
         """ """
-        TYPING = {'sn ia': 'snia',
-                  'ia-norm': 'snia-norm',
-                  'ia(-norm)': 'snia-norm',
-                  'ia-91t':'snia-pec-91t',
-                  'ia-91bg':'snia-pec-91bg',
-                  'ia-other':'snia-pec'}
-
         if name is None:
-            return self.data["classification"].apply(TYPING.get)
-
-        return self.data.loc[name]["classification"].apply(TYPING.get)
+            return self.data["classification"].copy()
+        
+        return self.data.loc[np.atleast_1d(name)]["classification"].copy()
     
     # LightCurve
     def get_target_lightcurve(self, name, **kwargs):
