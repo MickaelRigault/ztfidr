@@ -238,7 +238,7 @@ def get_salt2params(load=True, default=True, **kwargs):
 def get_host_coords(load=True, **kwargs):
     """ """
     filepath = os.path.join(IDR_PATH, "tables",
-                            ".dataset_creation/host_prop/host_photometry/ztfdr2_hostcoords.csv")
+                            ".dataset_creation/host_prop/host_photometry/global/archive/ztfdr2_hostcoords.csv")
     if not load:
         return filepath
     
@@ -247,7 +247,7 @@ def get_host_coords(load=True, **kwargs):
 def get_host_local(nkpc=2, which="mag", load=True, **kwargs):
     """ """
     filepath = os.path.join(IDR_PATH, "tables",
-                            f".dataset_creation/host_prop/host_photometry/ztfdr2_local{nkpc}kpc_{which}.csv")
+                            f".dataset_creation/host_prop/host_photometry/local/archive/ztfdr2_local{nkpc}kpc_{which}.csv")
     if not load:
         return filepath
     if not os.path.isfile(filepath):
@@ -258,7 +258,7 @@ def get_host_local(nkpc=2, which="mag", load=True, **kwargs):
 def get_host_sedfit(nkpc=2, load=True, **kwargs):
     """ """
     filepath = os.path.join(IDR_PATH, "tables",
-                            f".dataset_creation/host_prop/host_properties/ztfdr2_local{nkpc}kpc_sedfit.csv")
+                            f".dataset_creation/host_prop/host_properties/local/archive/ztfdr2_local{nkpc}kpc_sedfit.csv")
     if not load:
         return filepath
     if not os.path.isfile(filepath):
@@ -270,7 +270,7 @@ def get_host_sedfit(nkpc=2, load=True, **kwargs):
 def get_host_mags(load=True, index_col=0, raw=False, **kwargs):
     """ """
     filepath = os.path.join(IDR_PATH, "tables",
-                            ".dataset_creation/host_prop/host_photometry/ztfdr2_hostmags.csv")
+                            ".dataset_creation/host_prop/host_photometry/global/archive/ztfdr2_hostmags.csv")
     if not load:
         return filepath
 
