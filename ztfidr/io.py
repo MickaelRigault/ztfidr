@@ -70,15 +70,23 @@ def get_targetlist(load=True, **kwargs):
     return pandas.read_csv(filepath, **kwargs)
 
 def get_target_typing(load=True, index_col=0, sep=" ",
+                        from_datacreation=False,
                         clean=True, generic_typing=True,
                           **kwargs):
     """ """
-    filepath = os.path.join(IDR_PATH, "tables/.dataset_creation/sample_def",
+    if not from_datacreation: # bases:
+        filepath = os.path.join(IDR_PATH, "tables/ztfdr2_classifications.csv")
+        sep = ","
+    else:
+        filepath = os.path.join(IDR_PATH, "tables/.dataset_creation/sample_def",
                             "ztfdr2_typing.csv")
     if not load:
         return filepath
     
     data = pandas.read_csv(filepath, index_col=index_col, sep=sep, **kwargs)
+    if not from_datacreation:
+        return data
+    
     if clean:
         data["typing"] = data["typing"].str.replace("[","", regex=False).str.replace("]","", regex=False).str.replace("'","") # clean
         data["typing"] = data["typing"].str.replace("sn ia", "snia").str.replace("not ia", "notia")

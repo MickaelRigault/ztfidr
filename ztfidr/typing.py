@@ -333,10 +333,11 @@ class Classifications( _DBApp_ ):
         data = data.join(classification)
         return data
     
-    def store_typing(self, **kwargs):
+    def store_typing(self, to_datacreation=True, **kwargs):
         """ """
         data = self.get_typing(**kwargs)
-        return data.to_csv( io.get_target_typing(False), sep=" ")
+        return data.to_csv( io.get_target_typing(False, from_datacreation=to_datacreation),
+                                sep=" ")
 
     def load_classification(self, **kwargs):
         """ """

@@ -9,7 +9,7 @@ def show_hubble_standardisation(sample, fig=None,
     """ """
     from astropy.cosmology import Planck18
     data = sample.get_data(x1_range=[-4,4], c_range=[-0.3,0.8], goodcoverage=True)
-    data = data[data["classification"].isin(['ia(-norm)','ia-norm'])]
+    data = data[data["classification"].isin(['snia-norm'])]
     
     if fig is None:
         fig = plt.figure(figsize=[6,4])
@@ -52,9 +52,9 @@ def show_hubble_standardisation(sample, fig=None,
 def show_typingdistribution(sample, ax=None, fig=None):
     """ """
     dist_typing = sample.data.groupby("classification").size()
-    ia_norm = dist_typing[["ia-norm","ia(-norm)"]].sum()
-    ia_pec = dist_typing[["ia-91t","ia-91bg","ia-other"]].sum()
-    ia = dist_typing[["sn ia"]].sum()
+    ia_norm = dist_typing[["snia-norm"]].sum()
+    ia_pec = dist_typing[["snia-pec-91t","snia-pec-91bg","snia-pec"]].sum()
+    ia = dist_typing[["snia"]].sum()
     rest = dist_typing.sum() - (ia_norm+ia_pec+ia)
     if ax is None:
         if fig is None:
