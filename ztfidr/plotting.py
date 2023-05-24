@@ -1,31 +1,36 @@
+import pandas
 import numpy as np
 import matplotlib.pyplot as plt
 
 from . import utils
 
-def show_hubble_standardisation(sample, fig=None,
+def show_hubble_standardisation(sample_or_data, fig=None,
                                 param="c", vmin=-0.2, vmax=0.3, cmap="coolwarm", 
-                                clear_axes=False):
+                                clear_axes=False, bins="auto"):
     """ """
     from astropy.cosmology import Planck18
-    data = sample.get_data(x1_range=[-4,4], c_range=[-0.3,0.8], goodcoverage=True)
-    data = data[data["classification"].isin(['snia-norm'])]
-    
+    if not type(sample_or_data) == pandas.DataFrame:
+        data = sample_or_data.get_data(x1_range=[-4,4], c_range=[-0.3,0.8], goodcoverage=True)
+        data = data[data["classification"].isin(['snia-norm'])]
+    else:
+        data = sample_or_data.copy()
+        
     if fig is None:
         fig = plt.figure(figsize=[6,4])
     
     ax = fig.add_axes([0.1,0.15,0.8,0.75])
     cax = fig.add_axes([0.4,0.3,0.4,0.25])
 
-    mag = -2.5 * np.log10(data["x0"])
+    if "mag" not in data:
+        data["mag"] = -2.5 * np.log10(data["x0"])+19*1.58
+        
     sc = ax.scatter(data["redshift"], 
-                    mag+19*1.58, c=data[param], 
+                    data["mag"], c=data[param], 
                     cmap=cmap,
                     s=10, vmin=vmin, vmax=vmax)
 
-
     _ = utils.hist_colorbar(data[param], ax=cax, cmap=cmap, fcolorbar=0.1,
-                           vmin=vmin, vmax=vmax)
+                           vmin=vmin, vmax=vmax, bins=bins)
 
     xx = np.linspace(0.002,0.23,1000)
     ax.plot(xx, Planck18.distmod(xx), color="k", lw=2)

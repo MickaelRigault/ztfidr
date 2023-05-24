@@ -83,6 +83,7 @@ class LineFitter( object ):
         if type(spectrum) is str:
             from .spectroscopy import Spectrum
             spectrum = Spectrum.from_filename(spectrum)
+            
         # Loads
         this = cls(spectrum, redshift, lbda_window=lbda_window)
         # Fit        
