@@ -9,6 +9,18 @@ def get_sample(**kwargs):
     """ Short to to Sample.load() """
     return Sample.load(**kwargs)
 
+def _get_coverage_(phase_df, prefix=None):
+    """ """
+    if prefix is None:
+        prefix = ""
+
+    n_points  = phase_df.groupby(level=0).size().to_frame(f"n_{prefix}points")
+    n_bands   = ((phase_df.groupby(level=[0,1]).size()>0).groupby(level=0).sum()).to_frame(f"n_{prefix}bands")
+    n_points_g = phase_df.xs("ztfg", level=1).groupby(level=0).size().to_frame(f"n_{prefix}points_ztfg")
+    n_points_r = phase_df.xs("ztfr", level=1).groupby(level=0).size().to_frame(f"n_{prefix}points_ztfr")
+    n_points_i = phase_df.xs("ztfi", level=1).groupby(level=0).size().to_frame(f"n_{prefix}points_ztfi")
+    dfs = [n_points, n_bands, n_points_g, n_points_r, n_points_i]
+    return pandas.concat(dfs, axis=1).fillna(0).astype( int )
 
 class Sample():
 
@@ -106,7 +118,7 @@ class Sample():
                                                     groupby=groupby,
                                                     client=client, store=True, **kwargs)
         self._phase_df = phase_df
-
+        
     def load_fiedid(self):
         """ compute the fields containing the targets using 
         ztfquery.fields.get_fields_containing_target().
@@ -155,11 +167,13 @@ class Sample():
     # ------- #
     def get_data(self, clean_t0nan=True,
                      t0_range=None, x1_range=None, c_range=None,
-                     redshift_range=None, z_quality=None, redshift_source=None,
+                     redshift_range=None,
+                     redshift_source=None,
                      t0_err_range=None, c_err_range=None, x1_err_range=None,
                      exclude_targets=None, in_targetlist=None,
                      ndetections=None,
                      goodcoverage=None, coverage_prop={},
+                     classification=None,
                      first_spec_phase=None, query=None, data=None):
         """ 
         *_range: [None or [min, max]] -optional-
@@ -238,11 +252,13 @@ class Sample():
             
         # -  redshift origin
         if redshift_source is not None:
-            data = data[data["redshift"].isin(*np.atleast_1d(redshift_source))]
-            
-        if z_quality is not None and z_quality not in ["any","all","*"]:
-            data = data[data["z_quality"].isin(np.atleast_1d(z_quality))]
+            data = data[data["source"].isin(np.atleast_1d(redshift_source))]
 
+
+        # Classification
+        if classification is not None:
+            data = data[data["classification"].isin(np.atleast_1d(classification))]
+            
         # Target cuts
         # - in given list
         if in_targetlist is not None:
@@ -280,19 +296,23 @@ class Sample():
             
         return data
 
-    def get_ianorm(self, incl_snia=False):
-        """ get the list targets that are ia-norm (or sn ia if incl_snia=True)
+    def get_phases(self, one_per_day=False,
+                         phase_range=None,
+                         detection=5):
+        """ """
+        if detection is not None:
+            phase_df = self.phase_df[(self.phase_df["detection"]>detection)]["phase"].copy()
+        else:
+            phase_df = self.phase_df["phase"]
         
-        Returns
-        -------
-        array
-            list of targetname (data.index)
-        """        
-        classifications = ["snia-norm"]
-        if incl_snia:
-            classifications += ["snia"]
+        if one_per_day:
+            phase_df = phase_df.astype(int).reset_index().drop_duplicates().set_index(["ztfname","filter"])["phase"]
             
-        return np.asarray(self.data[self.data["classification"].isin(classifications)].index)
+        if phase_range is not None:
+            phase_df = phase_df[phase_df.between(*phase_df)]
+            
+        return phase_df
+                                    
     
     # Target | High level
     def get_target(self, name):
@@ -323,115 +343,61 @@ class Sample():
         return spectroscopy.Spectrum.from_name(name, **kwargs)
 
     # Extra
-    def get_goodcoverage_targets(self,
-                                     n_early_bands=">=2",
-                                     n_late_bands=">=2",
-                                       n_points=">=7",
-                                       premax_range=[-20,0],
-                                       postmax_range=[0,40],
-                                       phase_range=[-20,30],
-                                       **kwargs):
+    def get_goodcoverage_targets(self, premax_range = [-15,0],
+                                       postmax_range = [0,45],
+                                       phase_range = [-15,45],
+                                      **kwargs):
         """ kwargs should have the same format as the n_early_point='>=2' for instance.
         None means no constrain, like n_bands=None means 'n_bands' is not considered.
         """
-        query = {**dict(n_early_bands=n_early_bands, n_late_bands=n_late_bands,
-                        n_points=n_points),
+        query = {**dict(n_late_bands=">=2", n_points=">=7", n_early_points=">=2"),
                  **kwargs}
         df_query = " and ".join([f"{k}{v}" for k,v in query.items() if v is not None])
-        phase_coverage = self.get_phase_coverage(premax_range=premax_range,
-                                                 postmax_range=postmax_range,
-                                                 phase_range=phase_range)
+
+        phase_coverage = self.get_phase_coverage(premax_range = premax_range,
+                                                 postmax_range = postmax_range,
+                                                 phase_range = phase_range)
         return phase_coverage.query(df_query).index.astype("string")
-
     
-    def get_phase_coverage(self,premax_range=[-20,0],
-                                postmax_range=[0,40],
-                                phase_range=[-20,40], min_det_perband=1):
-        """ """        
-        # All
-        phases = self.phase_df[self.phase_df.between(*phase_range)].reset_index().rename({"level_0":"name"},axis=1)
-        n_points = phases.groupby(["name"]).size().to_frame("n_points")
-        n_bands = (phases.groupby(["name", "filter"]).size()>=min_det_perband
-                        ).groupby(level=[0]).sum().to_frame("n_bands")
-        # Pre-Max
-        # - AnyBand
-        premax = self.phase_df[self.phase_df.between(*premax_range)].reset_index().rename({"level_0":"name"},axis=1)
-        n_early_points = premax.groupby(["name"]).size().to_frame("n_early_points")
-        n_early_bands = (premax.groupby(["name", "filter"]).size()>=min_det_perband
-                        ).groupby(level=[0]).sum().to_frame("n_early_bands")
-        # - Per filters
-        n_early_points_perfilter = premax.groupby(["name", "filter"]).size()
-        n_early_points_g = n_early_points_perfilter.xs("p48g", level=1).to_frame("n_early_points_p48g")
-        n_early_points_r = n_early_points_perfilter.xs("p48r", level=1).to_frame("n_early_points_p48r")
-        n_early_points_i = n_early_points_perfilter.xs("p48i", level=1).to_frame("n_early_points_p48i")
-        
-        # Post-Max
-        # - AnyBand        
-        postmax = self.phase_df[self.phase_df.between(*postmax_range)].reset_index().rename({"level_0":"name"},axis=1)
-        n_late_points = postmax.groupby(["name"]).size().to_frame("n_late_points")
-        n_late_bands = (postmax.groupby(["name", "filter"]).size()>=min_det_perband
-                       ).groupby(level=[0]).sum().to_frame("n_late_bands")
-        # - Per filters
-        n_late_points_perfilter = postmax.groupby(["name", "filter"]).size()
-        n_late_points_g = n_late_points_perfilter.xs("p48g", level=1).to_frame("n_late_points_p48g")
-        n_late_points_r = n_late_points_perfilter.xs("p48r", level=1).to_frame("n_late_points_p48r")
-        n_late_points_i = n_late_points_perfilter.xs("p48i", level=1).to_frame("n_late_points_p48i")
-            
-        return pandas.concat([n_points,n_bands,
-                              n_early_points,n_early_bands,n_late_points, n_late_bands,
-                              n_early_points_g, n_early_points_r, n_early_points_i,
-                              n_late_points_g, n_late_points_r, n_late_points_i], axis=1).fillna(0).astype(int)
+    def get_phase_coverage(self, premax_range = [-15,0],
+                                 postmax_range = [0,45],
+                                 phase_range = [-15,45],
+                                 one_per_day=True):
+        """ """
 
+        phase_df = self.get_phases(one_per_day)
         
-    def build_phase_coverage(self, min_detection=5, groupby='filter', client=None, store=True, **kwargs):
+        dfs = _get_coverage_( phase_df[phase_df.between(*phase_range)] )
+        dfs_early = _get_coverage_(phase_df[phase_df.between(*premax_range)], prefix="early_")
+        dfs_late = _get_coverage_(phase_df[phase_df.between(*postmax_range)], prefix="late_")
+        return pandas.concat([dfs, dfs_early, dfs_late], axis=1).reindex(self.data.index).fillna(0).astype(int)
+        
+    def build_phase_coverage(self, groupby='filter', client=None, store=True, **kwargs):
         """ 
         time: 
         - Dask: 45s on a normal laptop | 4 cores 
         - No Dask: 60s on a normal laptop | 4 cores 
         """
+        warnings.warn("building phase coverage takes ~30s.")
+        
         import pandas
         import dask
         from . import lightcurve
-
+        from . import io
         phases = []
-        datalc = self.get_data()
-        datalc = datalc[datalc["redshift"].between(-0.1,0.2)]
-
-        warnings.warn("building phase coverage takes ~30s to 1min.")
-        # - Without Dask
-        if client is None:
-            warnings.warn("loading without Dask (client is None) ; it will be slow")
-            names_ok = []
-            for name in datalc.index:
-                try:
-                    dt = lightcurve.LightCurve.from_name(name)
-                    phases.append( dt.get_obsphase(min_detection=min_detection, groupby=groupby, **kwargs))
-                    names_ok.append(name)
-                except:
-                    warnings.warn(f"get_obsphase did not work for {name}")
-                    continue
-                
-            phase_df = pandas.concat(phases, keys=names_ok)
-
-        # - With Dask
-        else:
-            for name in datalc.index:
-                dt = dask.delayed(lightcurve.LightCurve.from_name)(name)
-                phases.append( dt.get_obsphase(min_detection=min_detection, groupby=groupby, **kwargs)
-                             )
-
-            fphases = client.compute(phases)
-            data_ = client.gather(fphases, "skip") # wait until all is done
-            names = datalc.index[[i for i,f_ in enumerate(fphases) if f_.status=="finished"]]
-            
-            phase_df = pandas.concat(data_, keys=names)
-
-        phase_df_exploded = phase_df.explode()
+        data = self.get_data()
+        
+        lcdata = io.get_lightcurve_datafile().set_index("ztfname").loc[data.index]
+        dfs = pandas.concat([pandas.read_csv(f_, delim_whitespace=True, comment='#') for f_ in lcdata["fullpath"]],
+                                keys=data.index)
+        dfs["phase"] = dfs["mjd"] - data["t0"].reindex(dfs.index, level=0)
+        dfs["detection"] = dfs["flux"]/dfs["flux_err"]
+        phase_df = dfs.reset_index().set_index(["ztfname","filter"])[["phase","detection"]]
         if store:
             filepath = io.get_phase_coverage(load=False)
-            phase_df_exploded.to_csv(filepath)
+            phase_df.to_parquet(filepath)
             
-        return phase_df_exploded
+        return phase_df
     
     
     # ------- #
@@ -728,7 +694,7 @@ class Sample():
 
     def show_firstdet_distributions(self, ax=None, restrict_to=[-25,60]):
         """ """
-        phases = self.phase_df[self.phase_df.between(*restrict_to)]
+        phases = self.get_phases(phase_range=restrict_to)
         goodlc = self.get_goodcoverage_targets()
 
         from matplotlib.colors import to_rgba
@@ -798,8 +764,7 @@ class Sample():
         if not hasattr(self, "_hostdata"):
             self.load_hostdata()
         return self._hostdata
-
-
+    
     @property
     def phase_df(self):
         """ """

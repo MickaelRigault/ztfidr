@@ -149,40 +149,38 @@ def get_redshif_data(load=True, index_col=0, full=False, **kwargs):
     
     # Emission lines
     sedm_em = pandas.read_csv(os.path.join(redshift_dir,
-                                            "specfile_sedm_emissionlines.csv"),
+                                            "ztfdr2_sedmhanii_redshift.csv"),
                                   index_col=0)
-    sedm_em = sedm_em.set_index("ztfname")[["sedmredshift","sedmredshift_err"]].copy()#.rename("sedmredshift","sedm_em", axis=1)
-    sedm_em.columns = sedm_em.columns.str.replace("sedmredshift","sedm_em")
+    sedm_em.columns = sedm_em.columns.str.replace("redshift","sedm")
     
     
     
     nosedm_em = pandas.read_csv(os.path.join(redshift_dir,
-                                                    "specfile_nonsedm_emissionlines.csv"),
+                                                    "ztfdr2_nonsedmhanii_redshift.csv"),
                                      index_col=0)
-    nosedm_em = nosedm_em.set_index("ztfname")[["value","error"]].copy()#.rename("sedmredshift","sedm_em", axis=1)
-    nosedm_em.columns = ["nonsedm_em", "nonsedm_em_err"]
+    nosedm_em.columns = nosedm_em.columns.str.replace("redshift","nonsedm")
     
     # SNID
     snidauto = pandas.read_csv(os.path.join(redshift_dir,
                                                     "ztfdr2_snid_redshifts.csv"),
                                      index_col=0)
-    snidauto.columns = snidauto.columns.str.replace("redshift","snidauto")
+    snidauto.columns = snidauto.columns.str.replace("redshift", "snid")
     
     # Host-Z
     hostz = pandas.read_csv(os.path.join(redshift_dir,
-                                                    "ztfdr2_hostz_redshifts.csv"),
+                                                    "ztfdr2_galcat_redshifts.csv"),
                                      index_col=0)
-    hostz = hostz[["redshift"]]
-    hostz.columns = ["host_cat"]
-    hostz["host_cat_err"] = 1e-5
+    hostz = hostz[["z"]]
+    hostz.columns = ["gal"]
+    hostz["gal_err"] = 1e-5
 
 
     
     # override
-    override = pandas.read_csv(os.path.join(redshift_dir,
-                                                    "ztfdr2_override_redshifts.csv"),
-                                     index_col=0)
-    override.columns = ["override"]
+#    override = pandas.read_csv(os.path.join(redshift_dir,
+#                                                    "ztfdr2_override_redshifts.csv"),
+#                                     index_col=0)
+#    override.columns = ["override"]
 
     # merge them
     
@@ -190,7 +188,7 @@ def get_redshif_data(load=True, index_col=0, full=False, **kwargs):
     data = data.join(nosedm_em, on="ztfname")
     data = data.join(snidauto, on="ztfname")
     data = data.join(hostz, on="ztfname")
-    data = data.join(override, on="ztfname")
+ #   data = data.join(override, on="ztfname")
     data
     
     return data
@@ -327,7 +325,7 @@ def get_target_lc(target, test_exist=True):
 
 def get_phase_coverage(load=True, warn=True, **kwargs):
     """ """
-    filepath = os.path.join(IDR_PATH, "tables", "phase_coverage.csv")
+    filepath = os.path.join(IDR_PATH, "tables", "phase_coverage.parquet")
     if not load:
         return filepath
 
@@ -337,9 +335,7 @@ def get_phase_coverage(load=True, warn=True, **kwargs):
                 "No phase_coverage file. build one using ztfidr.Sample().build_phase_coverage(store=True)")
         return None
 
-    return pandas.read_csv(filepath, index_col=0, **kwargs
-                           ).reset_index().rename({"index": "name"}, axis=1
-                                                  ).set_index(["name", "filter"])["phase"]
+    return pandas.read_parquet(filepath, **kwargs)#.set_index(["ztfname", "filter"])
 
 
 # ================== #
@@ -356,6 +352,16 @@ def get_autotyping(load=True, index_col=0, **kwargs):
     return pandas.read_csv(filepath, index_col=index_col, **kwargs)
 
 
+def get_lightcurve_datafile(contains=None):
+    """ """
+    from glob import glob
+    glob_format = "*" if contains is None else f"*{contains}*"
+    files = glob(os.path.join(IDR_PATH, "lightcurves", glob_format))
+    datafile = pandas.DataFrame(files, columns=["fullpath"])
+    datafile["basename"] = datafile["fullpath"].str.split(pat="/", expand=True).iloc[:, -1]
+    datafile["ztfname"] = datafile["basename"].str.split(pat="_", expand=True).iloc[:, 0]
+    return datafile
+    
 def get_spectra_datafile(contains=None, startswith=None,
                          snidres=False, extension=None, use_dask=False,
                          add_phase=True, data=None):
