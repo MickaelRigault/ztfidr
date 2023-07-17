@@ -14,14 +14,20 @@ __all__ = ["get_targets_data",
 #   TOP LEVEL        #
 #                    #
 # ================== #
-def get_targets_data():
-    """ """
+def get_targets_data(saltmodel="default"):
+    """ 
+    Returns
+    -------
+    pandas.DataFrame, string
+        - dataframe containing targets parameters (incl lc fit parameters)
+        - name of the lc fit model.
+    """
     redshifts = get_redshif_data()[["redshift","redshift_err", "source"]]
-    salt2params = get_salt2params()
+    saltparams, saltmodel = get_saltparams(which=saltmodel)
     coords = get_coords_data()
     
     # merging
-    data_ = pandas.merge(redshifts,salt2params, left_index=True, right_index=True,
+    data_ = pandas.merge(redshifts,saltparams, left_index=True, right_index=True,
                      suffixes=("","_salt"), how="outer")
     data_ = pandas.merge(data_, coords, left_index=True, right_index=True,
                          how="outer")
@@ -33,10 +39,7 @@ def get_targets_data():
     # adding classification
     typing = get_target_typing()
     data_ = data_.join(typing["classification"], how="left")
-
-
-    
-    return data_
+    return data_, saltmodel
 
 def get_localhost_data(local_nkpc=2, which="mag"):
     """ """
@@ -221,20 +224,50 @@ def get_coords_data(load=True, index_col=0, **kwargs):
     return pandas.read_csv(filepath, index_col=index_col, **kwargs)
 
 # SALT
-def get_salt2params(load=True, default=True, **kwargs):
-    """ """
-    filename = "ztfdr2_salt2_params.csv" if default else\
-      "ztfdr2_salt2_params_phase-15to30_color-0.4to0.8.csv"
-    filepath = os.path.join(IDR_PATH, "tables",
-                                filename)
+def get_saltparams(load=True, which="default", **kwargs):
+    """ 
 
+    Parameters
+    ----------
+    which: string
+        name of the salt2 fit file to load. 
+        If 'default': ztfdr2_salt2_params.csv is used
+        
+    Returns
+    -------
+    pandas.DataFrame, string
+        - dataframe containing targets lc fit parameters
+        - name of the lc fit model.
+    """
+    if which == "default":
+        filename = "ztfdr2_salt2_params.csv"
+    else:
+        filename = os.path.join(".dataset_creation/lc_fits", which)
+
+    filepath = os.path.join(IDR_PATH, "tables", filename)
+    saltmodel = _parse_salt2filename(filepath)
+    
+    
     if not load:
-        return filepath
+        return filepath, saltmodel
     
     return pandas.read_csv(filepath, **kwargs
                           ).rename({"z":"redshift"}, axis=1
-                          ).set_index("ztfname")
+                          ).set_index("ztfname"), saltmodel
 
+
+def _parse_salt2filename(filename):
+    """ """
+    basename = os.path.basename(filename)
+    saltmodel, *version = basename.split("_")[1].split("params")[0].split("-")
+    saltmodel = saltmodel.strip()
+    version = None if len(version) ==0 else version[0].strip()
+    if version is None:
+        if saltmodel == "salt2": # so name is salt2 only:
+            return f"{saltmodel} v=T21" # default version T21
+        return saltmodel
+    
+    return f"{saltmodel} v={version}"
 
 # ================== #
 #                    #
@@ -312,15 +345,18 @@ def get_host_mags(load=True, index_col=0, raw=False, **kwargs):
 #   LIGHTCURVES      #
 #                    #
 # ================== #
-def get_target_lc(target, test_exist=True):
+def get_target_lightcurve(target, test_exist=True, load=True):
     """ """
     fullpath = os.path.join(IDR_PATH, "lightcurves", f"{target}_LC.csv")
     if test_exist:
         if not os.path.isfile(fullpath):
             warnings.warn(f"No lc file for {target} ; {fullpath}")
             return None
-
-    return fullpath
+        
+    if not load:
+        return fullpath
+    
+    return pandas.read_csv(fullpath,  delim_whitespace=True, comment='#')
 
 
 def get_phase_coverage(load=True, warn=True, **kwargs):

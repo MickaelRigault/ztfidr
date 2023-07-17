@@ -10,22 +10,54 @@ __all__ =["get_target_lightcurve"]
 
 
 ZTFCOLOR = { # ZTF
-        "p48r":dict(marker="o",ms=7,  mfc="C3"),
-        "p48g":dict(marker="o",ms=7,  mfc="C2"),
-        "p48i":dict(marker="o",ms=7, mfc="C1")
+        "ztfr":dict(marker="o",ms=7,  mfc="C3"),
+        "ztfg":dict(marker="o",ms=7,  mfc="C2"),
+        "ztfi":dict(marker="o",ms=7, mfc="C1")
 }
 
 BAD_ZTFCOLOR = { # ZTF
-        "p48r":dict(marker="o",ms=6,  mfc="None", mec="C3"),
-        "p48g":dict(marker="o",ms=6,  mfc="None", mec="C2"),
-        "p48i":dict(marker="o",ms=6,  mfc="None", mec="C1")
+        "ztfr":dict(marker="o",ms=6,  mfc="None", mec="C3"),
+        "ztfg":dict(marker="o",ms=6,  mfc="None", mec="C2"),
+        "ztfi":dict(marker="o",ms=6,  mfc="None", mec="C1")
 }
 
 
-def get_target_lightcurve(name, load_salt2param=True, **kwargs):
+def get_target_lightcurve(name, saltparam=None, **kwargs):
     """ load the lightcurve object for the given target. """
-    return LightCurve.from_name(name, load_salt2param=load_salt2param, **kwargs)
+    return LightCurve.from_name(name, saltparam=saltparam, **kwargs)
+
+
+def get_target_lcresiduals(name, phase_range=None, mjd_range=None, saltparam=None,
+                               which_model=None, **kwargs):
+    """ shortcut to get the target lc residuals """
+    data = LightCurve.from_name(name, saltparam=saltparam).get_model_residual(which=which_model, **kwargs)
+    if phase_range is not None:
+        data = data[data["phase"].between(*phase_range)]
+
+    if mjd_range is not None:
+        data = data[data["mjd"].between(*mjd_range)]
+
+    return data
+
+def get_saltmodel(which="salt2.4", **params):
+    """ """
+    import sncosmo    
+    if which is None or which in ["salt2.4"]:
+        which = "salt2 v=2.4"
     
+    # parsing model version
+    source_name, *version = which.split("v=")
+    source_name = source_name.strip()
+    version = None if len(version)==0 else version[0].strip()
+    source = sncosmo.get_source(source_name, version=version, copy=True)
+    
+    dust  = sncosmo.CCM89Dust()
+    model = sncosmo.Model(source, effects=[dust],
+                              effect_names=['mw'],
+                              effect_frames=['obs'])
+    model.set(**params)
+    return model
+
 # ================== #
 #                    #
 #   LIGHTCURVES      #
@@ -34,17 +66,18 @@ def get_target_lightcurve(name, load_salt2param=True, **kwargs):
     
 class LightCurve( object ):
 
-    def __init__(self, data, meta=None, salt2param=None, use_dask=False):
+    def __init__(self, data, meta=None, saltparam=None, saltmodel=None, use_dask=False):
         """ likely, this is not how you should load the data. 
         See from_name() or from_filename() class methods.
         """
         self.set_data(data)
         self.set_meta(meta)
-        self.set_salt2param(salt2param)
+        self.set_saltparam(saltparam)
         self._use_dask = use_dask
+        self._saltmodel = saltmodel
         
     @classmethod
-    def from_filename(cls, filename, use_dask=False):
+    def from_filename(cls, filename, saltparam=None, use_dask=False, saltmodel=None, **kwargs):
         """  load a Lightcurve object from a given file. """
         if use_dask:
             from dask import delayed
@@ -55,35 +88,25 @@ class LightCurve( object ):
             
         meta = pandas.Series([os.path.basename(filename).split("_")[0]], 
                              index=["name"])
-        return cls(lc, meta=meta, use_dask=use_dask)
+        return cls(lc, meta=meta, use_dask=use_dask,
+                       saltparam=saltparam, saltmodel=saltmodel,
+                       **kwargs)
 
     @classmethod
-    def from_name(cls, targetname, use_dask=False, load_salt2param=True, **kwargs):
+    def from_name(cls, targetname, use_dask=False, saltparam=None, saltmodel=None, **kwargs):
         """ """
-        filename = io.get_target_lc(targetname)
-        this = cls.from_filename(filename, use_dask=use_dask, **kwargs)
-        this._targetname = targetname
-        if load_salt2param:
-            this.load_salt2param()
-            
+        filename = io.get_target_lightcurve(targetname, load=False)
+        this = cls.from_filename(filename, use_dask=use_dask, saltparam=saltparam, saltmodel=saltmodel, **kwargs)
+        this._targetname = targetname            
         return this
+    
     # ================ #
     #    Method        #
     # ================ #
     # --------- #
     #  LOADER   #
     # --------- #
-    def load_salt2param(self):
-        """ """
-        targetname = self.targetname
-        if targetname is None:
-            warnings.warn("Unknown targetname (=None) ; use manually set_salt2param()")
-            return None
-        
-        from .salt2 import get_target_salt2param
-        salt2param = get_target_salt2param(targetname)
-        self.set_salt2param(salt2param)
-        
+
     # --------- #
     #  SETTER   #
     # --------- #
@@ -91,9 +114,9 @@ class LightCurve( object ):
         """ """
         self._data = data
 
-    def set_salt2param(self, salt2param):
+    def set_saltparam(self, saltparam):
         """ """
-        self._salt2param = salt2param
+        self._saltparam = saltparam
         
     def set_meta(self, meta):
         """ """
@@ -114,13 +137,13 @@ class LightCurve( object ):
         
         return lcdata.groupby(groupby)["phase"].apply( list )
         
-    def get_saltmodel(self):
+    def get_saltmodel(self, which=None):
         """ """
-        from .salt2 import get_saltmodel
-        return get_saltmodel(**self.salt2param.rename({"redshift":"z"}
-                                                     )[["z","t0","x0","x1","c",
-                                                        "mwebv"]].to_dict()
-                            )
+        if which is None:
+            which = self._saltmodel
+        propmodel = self.saltparam.rename({"redshift":"z"})[["z","t0","x0","x1","c","mwebv"]].to_dict()
+        return get_saltmodel(which=which, **propmodel)
+    
     def get_lcdata(self, zp=None, in_mjdrange=None,
                        min_detection=None,
                        filters=None,
@@ -129,8 +152,8 @@ class LightCurve( object ):
         filters: [string, None or list]
             list of filters 
             - None/'*' or 'all': no filter selection/
-            - string: just this filter (e.g. 'p48g')
-            - list of string: just these filters (e.g. ['p48g','p48r'])
+            - string: just this filter (e.g. 'ztfg')
+            - list of string: just these filters (e.g. ['ztfg','ztfr'])
 
         flagout: [list of int or string]
             flag == 0 means all good, but in details:
@@ -153,8 +176,6 @@ class LightCurve( object ):
         if flagout in ["all","any","*"]:
             data = self.data[self.data["flag"]==0]
             
-        if flagout in ["all","any","*"]:
-            data = self.data[self.data["flag"]==0]
         elif flagout is None:
             data = self.data.copy()
         else:
@@ -168,7 +189,6 @@ class LightCurve( object ):
         else:
             coef = 10 ** (-(data["ZP"].values - zp) / 2.5)
 
-            
         flux  = data["flux"] * coef
         error = data["flux_err"] * coef
         detection = flux/error
@@ -186,11 +206,11 @@ class LightCurve( object ):
 #        lcdata["flux"] = flux
 #        lcdata["error"] = error
 #        lcdata["detection"] = detection
-        lcdata["filter"] = lcdata["filter"].replace("ztfg","p48g").replace("ztfr","p48r").replace("ztfi","p48i") 
+        lcdata["filter"] = lcdata["filter"].replace("ztf","ztf")
         
         
-        if self.has_salt2param():
-            lcdata["phase"] = lcdata["mjd"]-self.salt2param['t0']
+        if self.has_saltparam():
+            lcdata["phase"] = lcdata["mjd"]-self.saltparam['t0']
         else:
             lcdata["phase"] = np.NaN
             
@@ -205,9 +225,8 @@ class LightCurve( object ):
             
         return lcdata
 
-
-    def get_model_residual(self, model=None, modelprop={}, 
-                           intrinsic_error=None,
+    def get_model_residual(self, model=None, which=None,
+                           intrinsic_error=None, 
                            **kwargs):
         """ get a dataframe with lightcurve data, model and residuals information.
 
@@ -235,12 +254,9 @@ class LightCurve( object ):
         -------
         DataFrame
         """
-        basedata = self.get_lcdata(**kwargs)[["mjd","flux", "error","phase", "filter","flag"]]
+        basedata = self.get_lcdata(**kwargs)[["mjd","flux", "error","phase", "filter","flag"]].copy()
         if model is None:
-            model = self.get_saltmodel()
-            if modelprop is not None:
-                # Does nothing if empty dict
-                model.set(**modelprop) 
+            model = self.get_saltmodel(which)
 
         # Model
         basedata["model"] = model.bandflux(basedata["filter"], basedata["mjd"], 
@@ -254,13 +270,12 @@ class LightCurve( object ):
         # Pull    
         basedata["pull"] = basedata["residual"]/total_error
         return basedata
-
     
-    def get_sncosmotable(self, min_detection=5,  phase_range=[-10,30], filters=["p48r","p48g"], **kwargs):
+    def get_sncosmotable(self, min_detection=5,  phase_range=[-10,30], filters=["ztfr","ztfg"], **kwargs):
         """ """
         from .utils import mag_to_flux
         
-        t0 = self.salt2param["t0"]
+        t0 = self.saltparam["t0"]
         to_fit = self.get_lcdata(min_detection=min_detection, in_mjdrange= t0 + phase_range,
                                  filters=filters, **kwargs)
         sncosmo_lc = to_fit.rename({"mjd":"time", "filter":"band"}, axis=1)[["time","band","zp","mag","mag_err"]]
@@ -271,14 +286,14 @@ class LightCurve( object ):
         return sncosmo_lc
 
     def fit_salt(self, free_parameters=['t0', 'x0', 'x1', 'c'],
-                       min_detection=5, phase_range=[-10,30], filters=["p48r","p48g"],
-                       as_dataframe=False,
+                       min_detection=5, phase_range=[-10,30], filters=["ztfr","ztfg"],
+                       as_dataframe=False, which=None,
                        **kwargs):
         """ """
         import sncosmo
         from astropy import table
         from .salt2 import salt2result_to_dataframe
-        model = self.get_saltmodel()
+        model = self.get_saltmodel(which=which)
         sncosmo_df = self.get_sncosmotable(min_detection=min_detection, 
                                            phase_range=phase_range, 
                                            filters=filters)
@@ -290,7 +305,7 @@ class LightCurve( object ):
         
         return (fitted_data,model), (result, fitted_model)
 
-    def fit_salt_perfilter(lc, filters=["p48g",'p48r','p48i'],
+    def fit_salt_perfilter(lc, filters=["ztfg",'ztfr','ztfi'],
                            min_detection=5, free_parameters=['t0','x0', 'x1'],
                            phase_range=[-10, 30], t0_range=[-2,+2]):
         """ """
@@ -301,7 +316,7 @@ class LightCurve( object ):
                                       filters=filter_,
                                       free_parameters=free_parameters,
                                       phase_range=phase_range,
-                                      bounds={"t0":lc.salt2param['t0']+t0_range},
+                                      bounds={"t0":lc.saltparam['t0']+t0_range},
                                       as_dataframe=True
                                       )
             except:
@@ -312,16 +327,14 @@ class LightCurve( object ):
             
         return pandas.concat(results, keys=filters)
         
-    
-    
-
     # --------- #
     #  PLOTTER  #
     # --------- #
     def show(self, ax=None, figsize=None, zp=None, formattime=True, zeroline=True,
-                 incl_salt2=True, autoscale_salt=True, clear_yticks=True,
-                 phase_range=[-30,100],
-                 zprop={}, inmag=False, ulength=0.1, ualpha=0.1, notplt=False, **kwargs):
+                 incl_salt=True, which_model=None, autoscale_salt=True, clear_yticks=True,
+                 phase_range=[-30,100], as_phase=False, t0=None, 
+                 zprop={}, inmag=False, ulength=0.1, ualpha=0.1, notplt=False,
+                 rm_flags=True, **kwargs):
         """ """
         from matplotlib import dates as mdates
         from astropy.time import Time
@@ -342,24 +355,26 @@ class LightCurve( object ):
         bad_prop  = dict(ls="None", mew=1, ecolor="0.7", zorder=6)        
         lineprop  = dict(color="0.7", zorder=1, lw=0.5)
 
-        if incl_salt2:
-            saltmodel = self.get_saltmodel()
+        if incl_salt:
+            saltmodel = self.get_saltmodel(which=which_model)
         else:
              saltmodel = None
              autoscale_salt = False
              
-        modeltime = self.salt2param.t0 + np.linspace(-15,50,100)
-        t0 = self.salt2param.t0
+        modeltime = self.saltparam.t0 + np.linspace(-15,50,100)
+        t0 = self.saltparam.t0
         if phase_range is not None:
-            timerange = [t0-30, t0+100]
+            timerange = [t0+phase_range[0], t0+phase_range[1]]
         else:
             timerange = None
-            
-        lightcurves = self.get_lcdata(zp=zp, in_mjdrange=timerange)        
+
+        if not rm_flags:
+            prop = {"flagout":None}
+        else:
+            prop = {}
+        lightcurves = self.get_lcdata(zp=zp, in_mjdrange=timerange, **prop)
         bands = np.unique(lightcurves["filter"])
         
-        # flag goods
-        flag_good = (lightcurves.flag&1==0) & (lightcurves.flag&2==0) & (lightcurves.flag&4==0) & (lightcurves.flag&8==0)
 
         max_saltlc = 0
         min_saltlc = 100
@@ -372,7 +387,7 @@ class LightCurve( object ):
             flagband   = (lightcurves["filter"]==band_)
             
             bdata = lightcurves[flagband]
-            flag_good_ = flag_good[flagband]
+#            flag_good_ = flag_good[flagband]
             
             # IN FLUX
             if not inmag:
@@ -381,7 +396,8 @@ class LightCurve( object ):
                 y, dy = bdata["flux"], bdata["error"]
                 # - Salt
                 if saltmodel is not None:
-                    saltdata = saltmodel.bandflux(band_, modeltime, zp=self.flux_zp, zpsys="ab") if saltmodel is not None else None
+                    saltdata = saltmodel.bandflux(band_, modeltime, zp=self.flux_zp, zpsys="ab") \
+                      if saltmodel is not None else None
                 else:
                     saltdata = None
                     
@@ -390,7 +406,7 @@ class LightCurve( object ):
                 flag_det = (lightcurves["mag"]<99)
                 # - Data                
                 bdata = bdata[flag_det]
-                flag_good_ = flag_good_[flag_det]
+                #flag_good_ = flag_good_[flag_det]
                 datatime = Time(bdata["mjd"], format="mjd").datetime
                 y, dy = bdata["mag"], bdata["mag_err"]
                 # - Salt
@@ -400,14 +416,16 @@ class LightCurve( object ):
                     saltdata = None
             
             # -> good
-            ax.errorbar(datatime[flag_good_],
-                            y[flag_good_],  yerr=dy[flag_good_], 
+            ax.errorbar(datatime,#[flag_good_],
+                            y,#[flag_good_],
+                            yerr=dy,#[flag_good_], 
                             label=band_, 
                             **{**base_prop, **ZTFCOLOR[band_],**kwargs}
                             )
             # -> bad
-            ax.errorbar(datatime[~flag_good_],
-                            y[~flag_good_],  yerr=dy[~flag_good_], 
+            ax.errorbar(datatime,#[~flag_good_],
+                            y,#[~flag_good_],
+                            yerr=dy,#[~flag_good_], 
                             label=band_, 
                             **{**bad_prop, **BAD_ZTFCOLOR[band_],**kwargs}
                             )
@@ -431,8 +449,6 @@ class LightCurve( object ):
                                  color=ZTFCOLOR[band_]["mfc"], 
                                  ls="None",  label="_no_legend_")
                                  
-                                 
-                
         if formattime:
             locator = mdates.AutoDateLocator()
             formatter = mdates.ConciseDateFormatter(locator)
@@ -507,18 +523,16 @@ class LightCurve( object ):
         
         return self._targetname
     
-
-    def has_salt2param(self):
+    def has_saltparam(self):
         """" """
-        return self.salt2param is not None
+        return self.saltparam is not None
     
     @property
-    def salt2param(self):
+    def saltparam(self):
         """ """
-        if not hasattr(self,"_salt2param"):
+        if not hasattr(self,"_saltparam"):
             return None
-        return self._salt2param
-
+        return self._saltparam
 
     @property
     def flux_zp(self):

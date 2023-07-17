@@ -1,5 +1,12 @@
 import numpy as np
 
+
+def nmad(*args, **kwargs):
+    """ stats.median_abs_deviation forcing scale='normal' """
+    from scipy import stats
+    return stats.median_abs_deviation(*args, scale="normal", **kwargs)
+
+
 def mag_to_flux(mag, magerr=None, units="zp", zp=25.0, wavelength=None):
     """converts magnitude into flux
     Parameters

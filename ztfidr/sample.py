@@ -25,14 +25,15 @@ def _get_coverage_(phase_df, prefix=None):
 class Sample():
 
     
-    def __init__(self, data=None):
+    def __init__(self, data=None, saltmodel=None):
         """ """
         self.set_data(data)
-    
+        self._saltmodel = saltmodel
+        
     @classmethod
-    def load(cls, redshift_range=None, target_list=None, has_spectra=True):
+    def load(cls, redshift_range=None, target_list=None, has_spectra=True, saltmodel="default", **kwargs):
         """ Load a Sample instance building it from io.get_targets_data() """
-        data = io.get_targets_data()
+        data, saltmodel = io.get_targets_data(saltmodel=saltmodel, **kwargs)
         
         if redshift_range is not None:
             data = data[data["redshift"].between(*redshift_range)]
@@ -44,7 +45,7 @@ class Sample():
             specfile = io.get_spectra_datafile(data=data)
             data = data[data.index.isin(specfile["ztfname"])]
             
-        return cls(data=data)
+        return cls(data=data, saltmodel=saltmodel)
 
     # ------- #
     # LOADER  #
@@ -298,7 +299,8 @@ class Sample():
 
     def get_phases(self, one_per_day=False,
                          phase_range=None,
-                         detection=5):
+                         detection=5,
+                         in_targetlist=None):
         """ """
         if detection is not None:
             phase_df = self.phase_df[(self.phase_df["detection"]>detection)]["phase"].copy()
@@ -309,7 +311,10 @@ class Sample():
             phase_df = phase_df.astype(int).reset_index().drop_duplicates().set_index(["ztfname","filter"])["phase"]
             
         if phase_range is not None:
-            phase_df = phase_df[phase_df.between(*phase_df)]
+            phase_df = phase_df[phase_df.between(*phase_range)]
+
+        if in_targetlist:
+            phase_df = phase_df[phase_df.index.get_level_values(0).isin(np.atleast_1d(in_targetlist))]
             
         return phase_df
                                     
@@ -329,13 +334,45 @@ class Sample():
             return self.data["classification"].copy()
         
         return self.data.loc[np.atleast_1d(name)]["classification"].copy()
-    
+
+    # model
+    def get_target_saltmodel(self, name):
+        """ """
+        from .lightcurve import get_saltmodel
+        propmodel = self.data.loc[name].rename({"redshift":"z"})[["z","t0","x0","x1","c","mwebv"]].to_dict()
+        return get_saltmodel(which=self._saltmodel, **propmodel)
+        
+        
     # LightCurve
     def get_target_lightcurve(self, name, **kwargs):
         """ Get the {name} LightCurve object """
         from . import lightcurve
-        return lightcurve.LightCurve.from_name(name)
+        return lightcurve.LightCurve.from_name(name, saltparam=self.data.loc[name], saltmodel=self._saltmodel)
 
+    def get_target_lightcurve_residual(self, name, phase_range=None, mjd_range=None, **kwargs):
+        """ fet the {name} lightcurve residuals given the target's salt model. 
+        
+        Parameters
+        ----------
+        name: str
+            target's name
+
+        phase_range: [float, float]
+            limit phase range (days to maximum of light t0): [start, end]
+        
+        **kwargs goes to lightcurve.LightCurve.get_model_residual
+
+        Returns
+        -------
+        pandas.DataFrame
+        """
+        from . import lightcurve
+        return lightcurve.get_target_lcresiduals(name, phase_range,
+                                                     mjd_range=mjd_range,
+                                                     saltparam=self.data.loc[name],
+                                                     which_model=self._saltmodel,
+                                                     **kwargs)
+    
     # Spectrum
     def get_target_spectra(self, name, **kwargs):
         """ Get a list with all the Spectra for the given object """
@@ -346,6 +383,7 @@ class Sample():
     def get_goodcoverage_targets(self, premax_range = [-15,0],
                                        postmax_range = [0,45],
                                        phase_range = [-15,45],
+                                       detection=5, one_per_day=True,
                                       **kwargs):
         """ kwargs should have the same format as the n_early_point='>=2' for instance.
         None means no constrain, like n_bands=None means 'n_bands' is not considered.
@@ -356,16 +394,19 @@ class Sample():
 
         phase_coverage = self.get_phase_coverage(premax_range = premax_range,
                                                  postmax_range = postmax_range,
-                                                 phase_range = phase_range)
+                                                 phase_range = phase_range,
+                                                detection=5, one_per_day=True)
+        
         return phase_coverage.query(df_query).index.astype("string")
     
     def get_phase_coverage(self, premax_range = [-15,0],
                                  postmax_range = [0,45],
                                  phase_range = [-15,45],
-                                 one_per_day=True):
+                                 one_per_day=True,
+                                 detection=5):
         """ """
 
-        phase_df = self.get_phases(one_per_day)
+        phase_df = self.get_phases(one_per_day, detection=detection)
         
         dfs = _get_coverage_( phase_df[phase_df.between(*phase_range)] )
         dfs_early = _get_coverage_(phase_df[phase_df.between(*premax_range)], prefix="early_")
@@ -381,8 +422,6 @@ class Sample():
         warnings.warn("building phase coverage takes ~30s.")
         
         import pandas
-        import dask
-        from . import lightcurve
         from . import io
         phases = []
         data = self.get_data()
@@ -392,7 +431,7 @@ class Sample():
                                 keys=data.index)
         dfs["phase"] = dfs["mjd"] - data["t0"].reindex(dfs.index, level=0)
         dfs["detection"] = dfs["flux"]/dfs["flux_err"]
-        phase_df = dfs.reset_index().set_index(["ztfname","filter"])[["phase","detection"]]
+        phase_df = dfs.reset_index().set_index(["ztfname","filter"])[["phase","detection","flag","in_baseline"]]
         if store:
             filepath = io.get_phase_coverage(load=False)
             phase_df.to_parquet(filepath)
@@ -602,153 +641,7 @@ class Sample():
         return fig
 
 
-    def show_npoints_distribution_perband(self, phase_coverage=[-20, 40],
-                                                ax=None, clearaxes=True,
-                                          add_pantheon=True):
-        """ """
-        phase_cov = self.get_phase_coverage( premax_range=[phase_coverage[0], 0],
-                                               postmax_range=[0, phase_coverage[1]],
-                                               phase_range=phase_coverage,)
 
-
-        from matplotlib.colors import to_rgba
-        if ax is None:
-            import matplotlib.pyplot as plt
-            fig = plt.figure(figsize=[7, 4.5])
-            axb = fig.add_axes([0.08, 0.15, 0.87, 0.35])
-            axt = fig.add_axes([0.08, 0.6, 0.87, 0.35])
-
-        else:
-            fig = ax.figure
-            axb, axt = fig.axew
-
-        prop = dict(bins=np.logspace(0,3, 15), density=False, log=False)
-
-        # -------------
-        weights = np.ones(len(phase_cov))*1
-        axt.hist(phase_cov["n_early_points_p48g"]+phase_cov["n_late_points_p48g"], histtype="step", 
-                fill=True, 
-                edgecolor=to_rgba("tab:green", 1), lw=1., ls="--",
-                facecolor=to_rgba("tab:green", 0.05), 
-                label=f"ztf:g", weights=weights,
-                zorder=2, **prop)
-
-        axt.hist(phase_cov["n_early_points_p48r"]+phase_cov["n_late_points_p48r"], histtype="step", 
-                fill=True, 
-                edgecolor=to_rgba("tab:red", 1), lw=1., ls="-",
-                facecolor=to_rgba("tab:red", 0.05), 
-                label=f"ztf:r",weights=weights,
-                zorder=3, **prop)
-
-        axt.hist(phase_cov["n_early_points_p48i"]+phase_cov["n_late_points_p48i"], histtype="step", 
-                fill=True, 
-                edgecolor=to_rgba("tab:orange", 1), lw=1., ls=":",
-                facecolor=to_rgba("tab:orange", 0.05), 
-                label=f"ztf:i",weights=weights,
-                zorder=5, **prop)
-
-
-        # --------------
-        weights = np.ones(len(phase_cov))*1
-
-        axb.hist(phase_cov["n_points"], histtype="step", color="k", lw=1.5,
-                label=f"any phase",
-                weights=weights,
-                zorder=5, **prop)
-
-        axb.hist(phase_cov["n_early_points"], histtype="step", 
-                fill=True, 
-                edgecolor=to_rgba("0.5", 1), lw=1., ls="-",
-                facecolor=to_rgba("0.5", 0.), 
-                label="pre-max",
-                weights=weights,            
-                zorder=3, **prop)
-
-        axb.hist(phase_cov["n_late_points"], histtype="step", 
-                fill=True, 
-                edgecolor=to_rgba("0.5", 1), lw=0., 
-                facecolor=to_rgba("0.5", 0.3), 
-                label="post-max",
-                weights=weights,
-                zorder=4, **prop)
-
-        # --------------
-
-        axb.set_xlabel("number of detected point", fontsize="large")
-        axb.set_xscale("log")
-        axt.set_xscale("log")
-
-        if clearaxes:
-            clearwhich = ["left","right","top"] # "bottom"
-            for ax in [axb, axt]:
-                [ax.spines[which].set_visible(False) for which in clearwhich]
-                ax.tick_params(axis="y", labelsize="small", 
-                           labelcolor="0.5", color="0.5")
-
-        axt.legend(fontsize="medium", frameon=False)#, loc="upper left")
-        axb.legend(fontsize="medium", frameon=False)
-
-        axt.set_xlim(*axb.get_xlim())
-        return fig
-
-
-    def show_firstdet_distributions(self, ax=None, restrict_to=[-25,60]):
-        """ """
-        phases = self.get_phases(phase_range=restrict_to)
-        goodlc = self.get_goodcoverage_targets()
-
-        from matplotlib.colors import to_rgba
-        if ax is None:
-            import matplotlib.pyplot as plt
-            fig = plt.figure(figsize=[7, 2.5])
-            ax = fig.add_axes([0.08, 0.1, 0.87, 0.8])
-        else:
-            fig = ax.figure
-
-        first_det_per_band = phases.groupby(level=[0,1]).min()
-        first_det = first_det_per_band.unstack().min(axis=1)
-
-        prop = dict(range=[-21,30], bins=50, histtype="step", fill=True)
-
-        # ---- Any band
-
-        _ = ax.hist(first_det, facecolor="None", zorder=5,
-                    color="k", label="all Type Ia", **prop)
-
-        _ = ax.hist(first_det.loc[goodlc], zorder=4,
-                    facecolor="0.7", lw=0,
-                     label="good sampling", **prop)
-        # ---- Per filter
-
-        #ax.legend(frameon=False)
-
-        for band, color, label in zip(["p48g","p48r","p48i"],
-                              ["tab:green","tab:red","tab:orange"],
-                              ["ztf:g","ztf:r","ztf:i"]):
-            band_fdet = first_det_per_band.xs(band, level=1)
-            band_fdet_good = band_fdet.loc[band_fdet.index.isin(goodlc)]
-
-
-            _ = ax.hist(band_fdet_good, 
-                        facecolor=to_rgba(color, 0.0), #zorder=2,
-                        edgecolor=color,
-                        weights = np.ones(len(band_fdet_good))*-1, 
-                        label=label, **prop)
-
-        ax.spines["bottom"].set_position(('data',0))
-        ax.spines["bottom"].set_zorder(10)
-
-        clearwhich = ["left","right","top"] # "bottom"
-        [ax.spines[which].set_visible(False) for which in clearwhich]
-        ax.tick_params(axis="y", labelsize="small", 
-                   labelcolor="0.5", color="0.5")
-        ax.tick_params(axis="x", pad=2, zorder=10)
-        ax.set_xlabel("First detection phase [days]", loc="right")
-
-
-        #ax.legend(["all", "good"], frameon=False)
-        ax.legend(frameon=False, ncol=3)
-        return fig
         
     # =============== #
     #   Properties    #
