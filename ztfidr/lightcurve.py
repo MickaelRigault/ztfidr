@@ -360,14 +360,22 @@ class LightCurve( object ):
         else:
              saltmodel = None
              autoscale_salt = False
+
              
-        modeltime = self.saltparam.t0 + np.linspace(-15,50,100)
         t0 = self.saltparam.t0
-        if phase_range is not None:
-            timerange = [t0+phase_range[0], t0+phase_range[1]]
+        if not np.isnan(t0):
+            if phase_range is not None: # removes NaN
+                timerange = [t0+phase_range[0], t0+phase_range[1]]
+            else:
+                timerange = None
         else:
             timerange = None
-
+            if incl_salt:
+                warnings.warn("t0 in saltparam is NaN, cannot show the model")
+            incl_salt = False
+            saltmodel = None
+            autoscale_salt = False
+            
         if not rm_flags:
             prop = {"flagout":None}
         else:
@@ -392,7 +400,7 @@ class LightCurve( object ):
             # IN FLUX
             if not inmag:
                 # - Data
-                datatime = Time(bdata["mjd"], format="mjd").datetime
+                datatime = Time(bdata["mjd"].astype(float), format="mjd").datetime
                 y, dy = bdata["flux"], bdata["error"]
                 # - Salt
                 if saltmodel is not None:

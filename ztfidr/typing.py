@@ -356,8 +356,8 @@ class Classifications( _DBApp_ ):
         """ """
         # All auto | default
         auto_data = self._get_classification(prefix="auto_",
-                                                 min_review=min_review, min_autotyping=min_autotyping,
-                                                 min_generic_typing=min_generic_typing)
+                                             min_review=min_review, min_autotyping=min_autotyping,
+                                             min_generic_typing=min_generic_typing)
 
         # Masters
         master = self.get_masterclassification(incl_unclear=False) # do not consider unclear's input
@@ -402,7 +402,8 @@ class Classifications( _DBApp_ ):
         # Normal
         class_df = self.get_classification_df()
         d_ = pandas.DataFrame(class_df.apply(parse_classification, axis=1, **kwargs).to_list(),
-                                columns=[f"{prefix}classification",f"{prefix}clevel"], index=class_df.index)
+                                columns=[f"{prefix}classification",f"{prefix}clevel"],
+                                  index=class_df.index)
         return d_.reindex(list(self.target_list))
     # -------- #
     # GETTER   #
