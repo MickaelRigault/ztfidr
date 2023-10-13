@@ -7,9 +7,9 @@ import pandas
 filters.load_p48_filters_to_sncosmo(basename="p48") # p48g etc.
 
 
-from .io import get_salt2params
+from .io import get_saltparams
 try:
-    SALT2PARAMS = get_salt2params()
+    SALT2PARAMS = get_saltparams()
 except:
     warnings.warn("Failed to load SALT2 parameters")
     SALT2PARAMS = None

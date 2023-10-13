@@ -368,6 +368,7 @@ class LightCurve( object ):
                 timerange = [t0+phase_range[0], t0+phase_range[1]]
             else:
                 timerange = None
+            modeltime = t0 + np.linspace(-15,50,100)
         else:
             timerange = None
             if incl_salt:

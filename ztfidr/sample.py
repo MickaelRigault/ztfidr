@@ -426,7 +426,7 @@ class Sample():
         phases = []
         data = self.get_data()
         
-        lcdata = io.get_lightcurve_datafile().set_index("ztfname").loc[data.index]
+        lcdata = io.get_lightcurve_datafile(contains=".csv").set_index("ztfname").loc[data.index]
         dfs = pandas.concat([pandas.read_csv(f_, delim_whitespace=True, comment='#') for f_ in lcdata["fullpath"]],
                                 keys=data.index)
         dfs["phase"] = dfs["mjd"] - data["t0"].reindex(dfs.index, level=0)
