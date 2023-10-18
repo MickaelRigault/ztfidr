@@ -4,10 +4,7 @@ import pandas
 import numpy as np
 IDR_PATH = os.getenv("ZTFIDRPATH", "./dr2")
 
-__all__ = ["get_targets_data",
-           "get_host_data",
-           "get_localhost_data",           
-           "get_autotyping"]
+__all__ = ["get_targets_data"]
     
 # ================== #
 #                    #
@@ -40,23 +37,6 @@ def get_targets_data(saltmodel="default"):
     typing = get_target_typing()
     data_ = data_.join(typing["classification"], how="left")
     return data_, saltmodel
-
-def get_localhost_data(local_nkpc=2, which="mag"):
-    """ """
-    hostlocal = get_host_local(nkpc=2, which="mag")
-    hostcoords = get_host_coords()
-    dlr = get_host_mags().xs("global", axis=1)["host_dlr"]
-    hostcoords = hostcoords.merge(dlr, left_index=True, right_index=True)
-    return hostcoords.merge(hostlocal, left_index=True, right_index=True,
-                                how="left")
-
-def get_host_data(local_nkpc=2, which="mag"):
-    """ """
-    hostmag = get_host_mags().xs("global", axis=1)
-    hostcoords = get_host_coords()
-    return hostcoords.merge(hostmag, left_index=True, right_index=True,
-                                how="left")
-                                
 
 # ================== #
 #                    #
@@ -196,24 +176,6 @@ def get_redshif_data(load=True, index_col=0, full=False, **kwargs):
     
     return data
     
-def get_snidauto_redshift(load=True, **kwargs):
-    """ """
-    filepath = os.path.join(IDR_PATH,"tables",
-                                ".dataset_creation/redshifts/ztfdr2_snid_redshifts.csv")
-    if not load:
-        return filepath
-    
-    return pandas.read_csv(filepath, index_col=0, **kwargs)
-
-def get_snidauto_specfile_redshift(load=True, **kwargs):
-    """ """
-    filepath = os.path.join(IDR_PATH,"tables",
-                                ".dataset_creation/redshifts/snidauto_ianorm.csv")
-    if not load:
-        return filepath
-    
-    return pandas.read_csv(filepath, index_col=0, **kwargs)
-
 # Coordinates
 def get_coords_data(load=True, index_col=0, **kwargs):
     """ """
@@ -274,71 +236,37 @@ def _parse_salt2filename(filename):
 #   HOST             #
 #                    #
 # ================== #
-def get_host_coords(load=True, **kwargs):
+def get_globalhost_data(load=True, **kwargs):
     """ """
     filepath = os.path.join(IDR_PATH, "tables",
-                            ".dataset_creation/host_prop/host_photometry/global/archive/ztfdr2_hostcoords.csv")
+                            "ztfdr2_globalhost_prop.csv")
     if not load:
         return filepath
     
-    return pandas.read_csv(filepath, **{**dict(sep=" "),**kwargs}).set_index("ztfname")
+    return pandas.read_csv(filepath, index_col=0)
 
-def get_host_local(nkpc=2, which="mag", load=True, **kwargs):
+def get_localhost_data(load=True, **kwargs):
     """ """
     filepath = os.path.join(IDR_PATH, "tables",
-                            f".dataset_creation/host_prop/host_photometry/local/archive/ztfdr2_local{nkpc}kpc_{which}.csv")
+                            "ztfdr2_local2kpc_prop.csv")
     if not load:
         return filepath
-    if not os.path.isfile(filepath):
-        raise IOError(f"no such file {filepath}")
+    
+    return pandas.read_csv(filepath, index_col=0)
 
-    return pandas.read_csv(filepath, index_col=0, **kwargs)
 
-def get_host_sedfit(nkpc=2, load=True, **kwargs):
+def get_globalhost_mag():
     """ """
     filepath = os.path.join(IDR_PATH, "tables",
-                            f".dataset_creation/host_prop/host_properties/local/archive/ztfdr2_local{nkpc}kpc_sedfit.csv")
-    if not load:
-        return filepath
-    if not os.path.isfile(filepath):
-        raise IOError(f"no such file {filepath}")
-
-    return pandas.read_csv(filepath, index_col=0, **kwargs)
+                            ".dataset_creation/host_prop/host_photometry/ztfdr2_global_imcat_mag.csv")
+    return pandas.read_csv(filepath, index_col=0)
     
 
-def get_host_mags(load=True, index_col=0, raw=False, **kwargs):
+def get_localhost_mag():
     """ """
     filepath = os.path.join(IDR_PATH, "tables",
-                            ".dataset_creation/host_prop/host_photometry/global/archive/ztfdr2_hostmags.csv")
-    if not load:
-        return filepath
-
-    host_alldata = pandas.read_csv(filepath, index_col=index_col, **kwargs)
-    if raw:
-        return host_alldata
-
-    def _get_split_(which):
-        requested = f"{which}_mag"
-        if requested not in host_alldata:
-            raise ValueError(f"Unknown entry: {requested} (which={which})")
-
-        host_data = host_alldata[requested].astype(str).str.replace("nan", "np.nan").str.replace("inf", "np.nan").apply(eval)
-        host_err = host_alldata[requested+"_err"].astype(str).str.replace("nan", "np.nan").str.replace("inf", "np.nan").apply(eval)
-        flagna = host_data.isna() + host_err.isna()
-        data = pandas.DataFrame(list(host_data[~flagna]), index=host_data[~flagna].index)
-        error = pandas.DataFrame(list(host_err[~flagna]), index=host_err[~flagna].index)
-        error.columns += "_err"
-        return pandas.merge(data, error, left_index=True, right_index=True)
-
-    kpc2 = _get_split_(which="local_2kpc")
-    kpc4 = _get_split_(which="local_4kpc")
-    host_cat = _get_split_(which="host_cat")
-    hglobal = pandas.merge(host_cat,
-                          host_alldata[["z","host_dlr"]].rename({"z":"redshift"}, axis=1), 
-                          left_index=True, right_index=True,
-                               how="outer")
-    return pandas.concat([kpc2, kpc4, hglobal], axis=1,
-                          keys=["2kpc", "4kpc", "global"])
+                            ".dataset_creation/host_prop/host_photometry/ztfdr2_local2_imcat_mag.csv")
+    return pandas.read_csv(filepath, index_col=0)
     
 # ================== #
 #                    #
