@@ -287,19 +287,28 @@ class LightCurve( object ):
 
     def fit_salt(self, free_parameters=['t0', 'x0', 'x1', 'c'],
                        min_detection=5, phase_range=[-10,30], filters=["ztfr","ztfg"],
-                       as_dataframe=False, which=None,
+                       as_dataframe=False, which=None, modelprop={},
                        **kwargs):
         """ """
         import sncosmo
         from astropy import table
         from .salt2 import salt2result_to_dataframe
+
         model = self.get_saltmodel(which=which)
+        
+        if modelprop:
+            model.set( **modelprop )
+            print(dict(zip(model.param_names, model.parameters)))
+            
         sncosmo_df = self.get_sncosmotable(min_detection=min_detection, 
                                            phase_range=phase_range, 
                                            filters=filters)
+        
         fitted_data = table.Table.from_pandas(sncosmo_df)
         (result, fitted_model) = sncosmo.fit_lc(fitted_data, model,
-                                            vparam_names=free_parameters,  **kwargs)
+                                                vparam_names=free_parameters,
+                                                **kwargs)
+         
         if as_dataframe:
             return salt2result_to_dataframe(result)
         

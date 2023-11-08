@@ -3,11 +3,75 @@ import warnings
 import numpy as np
 import pandas
 from . import io
-from astropy import time
-        
+from astropy import time, cosmology
+_COEFS = 1.57
+_COSMO = cosmology.Planck18
+# Top level method #
+
 def get_sample(**kwargs):
     """ Short to to Sample.load() """
     return Sample.load(**kwargs)
+
+
+def get_data(saltmodel="default", redshift_source=None, redshift_range=[0.015, 0.2],
+                 **kwargs):
+    """ Generic dataframe for the ZTF DR2 sample passing the cosmology cuts: 
+   
+    by default, (all could be updated through kwargs)
+    - goodcoverage=True,
+    - x1_range=[-3, 3],
+    - c_range=[-0.2, 0.3],
+    - t0_err_range=[0, 1],
+    - x1_err_range=[0, 1], 
+    - c_err_range=[0, 0.1],
+    - classification=["snia-norm", "snia", "snia-pec-91t"],
+
+    """
+    sample = get_sample(saltmodel=saltmodel)
+    
+    prop = { **dict(goodcoverage=True,
+                    x1_range=[-3, 3],
+                    c_range=[-0.2, 0.3],
+                    t0_err_range=[0, 1],
+                    x1_err_range=[0, 1], 
+                    c_err_range=[0, 0.1],
+                    classification=["snia-norm", "snia", "snia-pec-91t"],
+                    redshift_range=redshift_range,
+                    redshift_source = redshift_source),
+              **kwargs}
+    
+    data = sample.get_data(**prop)
+    data = data[data["fitprob"]>1e-4]
+    
+    # Hubble Residuals    
+    data['mag'] = -2.5 * np.log10( data["x0"] ) + 19*_COEFS  - _COSMO.distmod(data["redshift"].values).value
+    data["mag_err"] =  +2.5/np.log(10) * data["x0_err"] / data["x0"]
+    data["cov_mag_c"] = 2.5*np.array(data['cov_x0_c'])/(np.log(10)*data['x0'])
+    data["cov_mag_x1"] = 2.5*np.array(data['cov_x0_x1'])/(np.log(10)*data['x0'])
+    
+    # Environmental data
+    localmags = io.get_localhost_mag()
+    globaldata = io.get_globalhost_data()
+    globalmags = io.get_globalhost_mag()
+    globaldata["mass_err"] = 0.12
+    
+    localmags["localcolor"] = localmags["PS1g"] - localmags["PS1z"]
+    localmags["localcolor_err"] = np.sqrt(localmags["PS1g_err"]**2 + localmags["PS1z_err"]**2)
+    
+    #localmags["mass"] = localmags["PS1g"] - localmags["PS1z"]
+    data = data.join(localmags[["localcolor","localcolor_err"]].loc[data.index])
+    data = data.join(globaldata[["mass","mass_err"]].loc[data.index])
+    data = data.join(globalmags[["PS1r"]].loc[data.index])
+    ## Standardisation parameters
+    
+    data["h_lowcolor"] = (data["localcolor"]<1).astype(float)
+    data["h_lowcolor_err"] = 1e-4
+    
+    data["h_lowmass"] = (data["mass"]<10).astype(float)
+    data["h_lowmass_err"] = 1e-4
+
+    return data.copy()
+
 
 def _get_coverage_(phase_df, prefix=None):
     """ """
