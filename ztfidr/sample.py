@@ -1,6 +1,7 @@
 
 import warnings
 import numpy as np
+from scipy import stats
 import pandas
 from . import io
 from astropy import time, cosmology
@@ -63,9 +64,10 @@ def get_data(saltmodel="default", redshift_source=None, redshift_range=[0.015, 0
     data = data.join(globaldata[["mass","mass_err"]].loc[data.index])
     data = data.join(globalmags[["PS1r"]].loc[data.index])
     ## Standardisation parameters
-    
-    data["h_lowcolor"] = (data["localcolor"]<1).astype(float)
-    data["h_lowcolor_err"] = 1e-4
+
+    lcolor_cut = 1
+    data["h_lowcolor"] = stats.norm.cdf(lcolor_cut, loc=data["localcolor"], scale=data["localcolor_err"])
+    data["h_lowcolor_err"] = 1e-3
     
     data["h_lowmass"] = (data["mass"]<10).astype(float)
     data["h_lowmass_err"] = 1e-4
@@ -514,7 +516,6 @@ class Sample():
                           **kwargs):
         """ """
         from matplotlib.colors import to_rgba
-        from scipy import stats
 
         # axes
         if ax is None:
