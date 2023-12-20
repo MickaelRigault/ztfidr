@@ -26,6 +26,7 @@ def get_data(saltmodel="default", redshift_source=None, redshift_range=[0.015, 0
     - x1_err_range=[0, 1], 
     - c_err_range=[0, 0.1],
     - classification=["snia-norm", "snia", "snia-pec-91t"],
+    - data["fitprob"]>1e-4
 
     """
     sample = get_sample(saltmodel=saltmodel)
@@ -54,7 +55,7 @@ def get_data(saltmodel="default", redshift_source=None, redshift_range=[0.015, 0
     localmags = io.get_localhost_mag()
     globaldata = io.get_globalhost_data()
     globalmags = io.get_globalhost_mag()
-    globaldata["mass_err"] = 0.12
+    globaldata["mass_err"] = globaldata["mass_err"]/2.
     
     localmags["localcolor"] = localmags["PS1g"] - localmags["PS1z"]
     localmags["localcolor_err"] = np.sqrt(localmags["PS1g_err"]**2 + localmags["PS1z_err"]**2)
@@ -69,8 +70,8 @@ def get_data(saltmodel="default", redshift_source=None, redshift_range=[0.015, 0
     data["h_lowcolor"] = stats.norm.cdf(lcolor_cut, loc=data["localcolor"], scale=data["localcolor_err"])
     data["h_lowcolor_err"] = 1e-3
     
-    data["h_lowmass"] = (data["mass"]<10).astype(float)
-    data["h_lowmass_err"] = 1e-4
+    data["h_lowmass"] = stats.norm.cdf(10, loc=data["mass"], scale=data["mass_err"])
+    data["h_lowmass_err"] = 1e-3
 
     return data.copy()
 

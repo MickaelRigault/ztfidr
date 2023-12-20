@@ -229,10 +229,10 @@ import numpy as np
 
 def show_residual(data, key="pull", ax=None, axh=None, axc=None,
                   binstat="mean", bins=np.arange(-50,50, 0.25),
-                  main_color="C0", cmap_significance="Greys_r",
+                  main_color="C0", cmap_significance="GnBu_r",
                   incl_lef=True, incl_runningpull=False,
                   pull_color=None,
-                  blw=0.1, bs=8, bec="w",
+                  blw=0.1, bs=8, ="w",
                   **kwargs):
     """ """
     from matplotlib.colors import to_rgba
@@ -328,7 +328,7 @@ def show_residual(data, key="pull", ax=None, axh=None, axc=None,
     return fig
 
 def show_lc_residuals(data, fig=None, axes=None,
-                      incl_lef=True, cmap_significance="Greys", 
+                      incl_lef=True, cmap_significance="GnBu_r", 
                       binstat="mean", key="pull",
                       bincadence=[1,1,2], # g, r, i
                       incl_runningpull=True, incl_filtername=True,
@@ -346,7 +346,7 @@ def show_lc_residuals(data, fig=None, axes=None,
 
     
     left = propaxes.get("left", 0.1)
-    bottom, height = propaxes.get("bottom",0.1), propaxes.get("height", 0.27)
+    bottom, height = propaxes.get("bottom", 0.1), propaxes.get("height", 0.27)
     vspan, hspan = propaxes.get("vspan", 0.015),  propaxes.get("hspan", 0.001)
     width, hwidth = propaxes.get("width", 0.78),  propaxes.get("hwidth", 0.1)
     cvspan = propaxes.get("cvspan", 0.)
