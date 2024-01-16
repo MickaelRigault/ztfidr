@@ -180,7 +180,7 @@ class LightCurve( object ):
             data = self.data.copy()
         else:
             flag_ = np.all([(self.data.flag&i_==0) for i_ in np.atleast_1d(flagout)], axis=0)
-            data = self.data[flag_]            
+            data = self.data[flag_]
             
 
         if zp is None:

@@ -15,17 +15,18 @@ def get_sample(**kwargs):
 
 
 def get_data(saltmodel="default", redshift_source=None, redshift_range=[0.015, 0.2],
+                 fitprob=1e-5,
                  **kwargs):
     """ Generic dataframe for the ZTF DR2 sample passing the cosmology cuts: 
    
     by default, (all could be updated through kwargs)
     - goodcoverage=True,
     - x1_range=[-3, 3],
-    - c_range=[-0.2, 0.3],
+    - c_range=[-0.2, 0.8],
     - t0_err_range=[0, 1],
     - x1_err_range=[0, 1], 
     - c_err_range=[0, 0.1],
-    - classification=["snia-norm", "snia", "snia-pec-91t"],
+    - classification=["snia-cosmo", "snia"],
     - data["fitprob"]>1e-4
 
     """
@@ -33,17 +34,17 @@ def get_data(saltmodel="default", redshift_source=None, redshift_range=[0.015, 0
     
     prop = { **dict(goodcoverage=True,
                     x1_range=[-3, 3],
-                    c_range=[-0.2, 0.3],
+                    c_range=[-0.2, 0.8],
                     t0_err_range=[0, 1],
                     x1_err_range=[0, 1], 
                     c_err_range=[0, 0.1],
-                    classification=["snia-norm", "snia", "snia-pec-91t"],
+                    classification=["snia-cosmo", "snia"],
+                    fitprob = 1e-6,
                     redshift_range=redshift_range,
                     redshift_source = redshift_source),
               **kwargs}
     
     data = sample.get_data(**prop)
-    data = data[data["fitprob"]>1e-4]
     
     # Hubble Residuals    
     data['mag'] = -2.5 * np.log10( data["x0"] ) + 19*_COEFS  - _COSMO.distmod(data["redshift"].values).value
@@ -240,6 +241,7 @@ class Sample():
                      t0_err_range=None, c_err_range=None, x1_err_range=None,
                      exclude_targets=None, in_targetlist=None,
                      ndetections=None,
+                     fitprob=None,
                      goodcoverage=None, coverage_prop={},
                      classification=None,
                      first_spec_phase=None, query=None, data=None):
@@ -325,7 +327,7 @@ class Sample():
 
         # Classification
         if classification is not None:
-            data = data[data["classification"].isin(np.atleast_1d(classification))]
+            data = data[data["sn_type"].isin(np.atleast_1d(classification))]
             
         # Target cuts
         # - in given list
@@ -352,6 +354,9 @@ class Sample():
             else:
                 data = data.loc[~flag_goodcoverage]
 
+        if fitprob is not None:
+            data = data[data["fitprob"]>fitprob]
+                
         # Spectral Cut.
         if first_spec_phase is not None:
             first_spec = self.spectra_df.groupby(level=0).phase.first()
@@ -367,13 +372,23 @@ class Sample():
     def get_phases(self, one_per_day=False,
                          phase_range=None,
                          detection=5,
-                         in_targetlist=None):
+                         in_targetlist=None,
+                         flagout=[1, 2, 4, 8, 16]):
         """ """
-        if detection is not None:
-            phase_df = self.phase_df[(self.phase_df["detection"]>detection)]["phase"].copy()
-        else:
-            phase_df = self.phase_df["phase"]
+        phase_df = self.phase_df.copy()
         
+        # remove bad lc points
+        if flagout is not None:
+            flag_ = np.all([(phase_df["flag"]&i_==0) for i_ in np.atleast_1d(flagout)], axis=0)
+            phase_df = phase_df[flag_]
+
+
+        if detection is not None:
+            phase_df = phase_df[(phase_df["detection"]>detection)]["phase"].copy()
+        else:
+            phase_df = phase_df["phase"]
+
+            
         if one_per_day:
             phase_df = phase_df.astype(int).reset_index().drop_duplicates().set_index(["ztfname","filter"])["phase"]
             
@@ -398,9 +413,9 @@ class Sample():
     def get_target_typing(self, name=None):
         """ """
         if name is None:
-            return self.data["classification"].copy()
+            return self.data["sn_type"].copy()
         
-        return self.data.loc[np.atleast_1d(name)]["classification"].copy()
+        return self.data.loc[np.atleast_1d(name)]["sn_type"].copy()
 
     # model
     def get_target_saltmodel(self, name):
@@ -466,9 +481,9 @@ class Sample():
         
         return phase_coverage.query(df_query).index.astype("string")
     
-    def get_phase_coverage(self, premax_range = [-15,0],
-                                 postmax_range = [0,45],
-                                 phase_range = [-15,45],
+    def get_phase_coverage(self, premax_range = [-10, 0],
+                                 postmax_range = [0, 40],
+                                 phase_range = [-10, 40],
                                  one_per_day=True,
                                  detection=5):
         """ """

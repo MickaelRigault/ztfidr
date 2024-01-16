@@ -35,7 +35,7 @@ def get_targets_data(saltmodel="default"):
 
     # adding classification
     typing = get_target_typing()
-    data_ = data_.join(typing["classification"], how="left")
+    data_ = data_.join(typing[["sn_type", "sub_type"]], how="left")
     return data_, saltmodel
 
 # ================== #
