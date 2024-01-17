@@ -77,11 +77,14 @@ def get_data(saltmodel="default", redshift_source=None, redshift_range=[0.015, 0
     return data.copy()
 
 
-def _get_coverage_(phase_df, prefix=None):
+def _get_coverage_(phase_df, prefix=None, one_per_day=False):
     """ """
     if prefix is None:
         prefix = ""
 
+    if one_per_day:
+        phase_df = phase_df.copy().astype(int).reset_index().drop_duplicates().set_index(["ztfname","filter"])["phase"]
+        
     n_points  = phase_df.groupby(level=0).size().to_frame(f"n_{prefix}points")
     n_bands   = ((phase_df.groupby(level=[0,1]).size()>0).groupby(level=0).sum()).to_frame(f"n_{prefix}bands")
     n_points_g = phase_df.xs("ztfg", level=1).groupby(level=0).size().to_frame(f"n_{prefix}points_ztfg")
@@ -346,13 +349,10 @@ class Sample():
             
         # - special good lc list.            
         if goodcoverage is not None:
-            good_covarege_targets = self.get_goodcoverage_targets(**coverage_prop)
-            # doing it with np.in1d to make sure all matches and not some are already missing
-            flag_goodcoverage = np.asarray(good_covarege_targets)[np.in1d(good_covarege_targets, data.index.astype("string"))]
             if goodcoverage:
-                data = data.loc[flag_goodcoverage]
+                data = data[data["lccoverage_flag"].astype(bool)]
             else:
-                data = data.loc[~flag_goodcoverage]
+                data = data[~data["lccoverage_flag"].astype(bool)]
 
         if fitprob is not None:
             data = data[data["fitprob"]>fitprob]
@@ -371,11 +371,19 @@ class Sample():
 
     def get_phases(self, one_per_day=False,
                          phase_range=None,
-                         detection=5,
+                         detection=5, incl_errorfloor=True,
                          in_targetlist=None,
-                         flagout=[1, 2, 4, 8, 16]):
+                         flagout=[1, 2, 4, 8, 16],
+                         restframe=True):
         """ """
         phase_df = self.phase_df.copy()
+        
+        if restframe:
+            phase_df = phase_df.join(self.data["redshift"])
+            phase_df["phase"] = phase_df["phase"]/(1+phase_df["redshift"])
+
+        if phase_range is not None:
+            phase_df = phase_df[phase_df["phase"].between(*phase_range)]
         
         # remove bad lc points
         if flagout is not None:
@@ -384,17 +392,17 @@ class Sample():
 
 
         if detection is not None:
-            phase_df = phase_df[(phase_df["detection"]>detection)]["phase"].copy()
+            if incl_errorfloor:
+                det_key = "detection_ef"
+            else:
+                det_key = "detection"
+            phase_df = phase_df[(phase_df[det_key]>=detection)]["phase"].copy()
         else:
             phase_df = phase_df["phase"]
 
-            
         if one_per_day:
             phase_df = phase_df.astype(int).reset_index().drop_duplicates().set_index(["ztfname","filter"])["phase"]
             
-        if phase_range is not None:
-            phase_df = phase_df[phase_df.between(*phase_range)]
-
         if in_targetlist:
             phase_df = phase_df[phase_df.index.get_level_values(0).isin(np.atleast_1d(in_targetlist))]
             
@@ -462,22 +470,22 @@ class Sample():
         return spectroscopy.Spectrum.from_name(name, **kwargs)
 
     # Extra
-    def get_goodcoverage_targets(self, premax_range = [-15,0],
-                                       postmax_range = [0,45],
-                                       phase_range = [-15,45],
-                                       detection=5, one_per_day=True,
+    def get_goodcoverage_targets(self, detection=5, one_per_day=True,
                                       **kwargs):
         """ kwargs should have the same format as the n_early_point='>=2' for instance.
         None means no constrain, like n_bands=None means 'n_bands' is not considered.
         """
-        query = {**dict(n_late_bands=">=2", n_points=">=7", n_early_points=">=2"),
+        # Only considering 1 point per band and per day (mjd int) if one_per_day==True
+        query = {**dict(n_points=">=7", # any band
+                        n_early_points=">=2", # e.g. at least 2g or 1g and 1i
+                        n_late_points=">=2", # e.g. at least 2g or 1g and 1i
+                        n_bands=">=2", # e.g. at least 1g and 1r | 2 filters post max
+                        ),
                  **kwargs}
         df_query = " and ".join([f"{k}{v}" for k,v in query.items() if v is not None])
 
-        phase_coverage = self.get_phase_coverage(premax_range = premax_range,
-                                                 postmax_range = postmax_range,
-                                                 phase_range = phase_range,
-                                                detection=5, one_per_day=True)
+        phase_coverage = self.get_phase_coverage(detection=detection,
+                                                 one_per_day=one_per_day)
         
         return phase_coverage.query(df_query).index.astype("string")
     
@@ -487,15 +495,25 @@ class Sample():
                                  one_per_day=True,
                                  detection=5):
         """ """
+        # force phase range first then bin per day | don't been yet
+        phase_df = self.get_phases(one_per_day=False,
+                                   detection=detection)
 
-        phase_df = self.get_phases(one_per_day, detection=detection)
+        dfs = _get_coverage_( phase_df[phase_df.between(*phase_range)],
+                                  one_per_day=one_per_day
+                            )
         
-        dfs = _get_coverage_( phase_df[phase_df.between(*phase_range)] )
-        dfs_early = _get_coverage_(phase_df[phase_df.between(*premax_range)], prefix="early_")
-        dfs_late = _get_coverage_(phase_df[phase_df.between(*postmax_range)], prefix="late_")
-        return pandas.concat([dfs, dfs_early, dfs_late], axis=1).reindex(self.data.index).fillna(0).astype(int)
+        dfs_early = _get_coverage_(phase_df[phase_df.between(*premax_range)],
+                                       prefix="early_", one_per_day=one_per_day)
+        dfs_late = _get_coverage_(phase_df[phase_df.between(*postmax_range)],
+                                      prefix="late_", one_per_day=one_per_day)
         
-    def build_phase_coverage(self, groupby='filter', client=None, store=True, **kwargs):
+        return pandas.concat([dfs, dfs_early, dfs_late], axis=1
+                            ).reindex(self.data.index).fillna(0).astype(int)
+        
+    def build_phase_coverage(self, groupby='filter', client=None, store=True,
+                                 error_floor={"ztfg":2.5, "ztfr":3.5, "ztfi":6},
+                                 **kwargs):
         """ 
         time: 
         - Dask: 45s on a normal laptop | 4 cores 
@@ -513,7 +531,14 @@ class Sample():
                                 keys=data.index)
         dfs["phase"] = dfs["mjd"] - data["t0"].reindex(dfs.index, level=0)
         dfs["detection"] = dfs["flux"]/dfs["flux_err"]
-        phase_df = dfs.reset_index().set_index(["ztfname","filter"])[["phase","detection","flag","in_baseline"]]
+        # error floor:
+        error_floor=pandas.Series(error_floor, name="errorfloor").to_frame().reset_index().rename({"index":"filter"},
+                                                                                                   axis=1)
+        dfs = dfs.reset_index().merge(error_floor, on="filter")
+        dfs["detection_ef"] = dfs["flux"]/ (np.sqrt(dfs["flux_err"]**2 + (dfs["flux"]*dfs["errorfloor"]/100)**2) )
+        phase_df = dfs.reset_index().set_index(["ztfname","filter"])[["phase","detection",
+                                                                          "detection_ef",
+                                                                      "flag","in_baseline"]]
         if store:
             filepath = io.get_phase_coverage(load=False)
             phase_df.to_parquet(filepath)

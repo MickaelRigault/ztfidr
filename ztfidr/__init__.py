@@ -1,6 +1,6 @@
-__version__ = "0.10.0"
+__version__ = "0.10.1"
 
-from .sample import get_sample
+from .sample import get_sample, get_data
 from .lightcurve import *
 from .spectroscopy import *
 from .io import *
