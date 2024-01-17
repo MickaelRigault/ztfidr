@@ -35,10 +35,10 @@ def get_data( saltmodel="default",
     """
     sample = get_sample(saltmodel=saltmodel)
     
-    prop = { **dict(good_coverage=True,
-                    good_lcfit=True,
+    prop = { **dict(good_coverage=good_coverage,
+                    good_lcfit=good_lcfit,
                     redshift_range=redshift_range,
-                    redshift_source = redshift_source),
+                    redshift_source =redshift_source),
               **kwargs}
     
     data = sample.get_data(**prop)
