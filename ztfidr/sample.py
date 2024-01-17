@@ -14,32 +14,29 @@ def get_sample(**kwargs):
     return Sample.load(**kwargs)
 
 
-def get_data(saltmodel="default", redshift_source=None, redshift_range=[0.015, 0.2],
-                 fitprob=1e-5,
+def get_data( saltmodel="default",
+              good_coverage = True,
+              good_lcfit = True,
+              redshift_source=None,
+              redshift_range=[0.015, 0.2],
                  **kwargs):
     """ Generic dataframe for the ZTF DR2 sample passing the cosmology cuts: 
    
-    by default, (all could be updated through kwargs)
-    - goodcoverage=True,
-    - x1_range=[-3, 3],
-    - c_range=[-0.2, 0.8],
-    - t0_err_range=[0, 1],
-    - x1_err_range=[0, 1], 
-    - c_err_range=[0, 0.1],
-    - classification=["snia-cosmo", "snia"],
-    - data["fitprob"]>1e-4
+    - good_coverage=True, means minimal sampling (see overview paper)
+    - good_lcfit=True, means:
+       - x1_range=[-3, 3],
+       - c_range=[-0.2, 0.8],
+       - t0_err_range=[0, 1],
+       - x1_err_range=[0, 1], 
+       - c_err_range=[0, 0.1],
+       - fitprob > 1e-7
 
+    use **kwargs to change any selection (see sample.get_data()
     """
     sample = get_sample(saltmodel=saltmodel)
     
-    prop = { **dict(goodcoverage=True,
-                    x1_range=[-3, 3],
-                    c_range=[-0.2, 0.8],
-                    t0_err_range=[0, 1],
-                    x1_err_range=[0, 1], 
-                    c_err_range=[0, 0.1],
-                    classification=["snia-cosmo", "snia"],
-                    fitprob = 1e-6,
+    prop = { **dict(good_coverage=True,
+                    good_lcfit=True,
                     redshift_range=redshift_range,
                     redshift_source = redshift_source),
               **kwargs}
@@ -237,7 +234,12 @@ class Sample():
     # ------- #
     # GETTER  #
     # ------- #
-    def get_data(self, clean_t0nan=True,
+    def get_data(self,
+                     good_coverage=None,
+                     good_lcfit=None,                     
+                     
+                     clean_t0nan=True,
+                     
                      t0_range=None, x1_range=None, c_range=None,
                      redshift_range=None,
                      redshift_source=None,
@@ -245,7 +247,7 @@ class Sample():
                      exclude_targets=None, in_targetlist=None,
                      ndetections=None,
                      fitprob=None,
-                     goodcoverage=None, coverage_prop={},
+                     
                      classification=None,
                      first_spec_phase=None, query=None, data=None):
         """ 
@@ -348,12 +350,19 @@ class Sample():
             data = data.loc[data.index.isin(min_corevarge.index)]
             
         # - special good lc list.            
-        if goodcoverage is not None:
-            if goodcoverage:
+        if good_coverage is not None:
+            if good_coverage:
                 data = data[data["lccoverage_flag"].astype(bool)]
             else:
                 data = data[~data["lccoverage_flag"].astype(bool)]
 
+
+        if good_lcfit is not None:
+            if good_lcfit:
+                data = data[data["lcquality_flag"].astype(bool)]
+            else:
+                data = data[~data["lcquality_flag"].astype(bool)]
+                
         if fitprob is not None:
             data = data[data["fitprob"]>fitprob]
                 
