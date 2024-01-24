@@ -18,7 +18,7 @@ def get_data( saltmodel="default",
               good_coverage = True,
               good_lcfit = True,
               redshift_source=None,
-              redshift_range=[0.015, 0.2],
+              redshift_range=None,
                  **kwargs):
     """ Generic dataframe for the ZTF Cosmo DR2 sample.
    
