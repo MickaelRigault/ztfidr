@@ -355,8 +355,9 @@ def get_spectra_datafile(contains=None, startswith=None,
             data = get_sample().data
             
         specfile["dateiso"] = Time(np.asarray(specfile["date"].apply(lambda x: f"{x[:4]}-{x[4:6]}-{x[6:]}"), dtype=str), format="iso").mjd
-        specfile = specfile.join(data["t0"], on="ztfname")
-        specfile["phase"] = specfile.pop("dateiso")-specfile.pop("t0")
+        specfile = specfile.join(data[["t0", "redshift"]], on="ztfname")
+        specfile["phase_obs"] = (specfile.pop("dateiso")-specfile.pop("t0"))
+        specfile["phase"] = specfile["phase_obs"]/(1+specfile.pop("redshift"))
         
     return specfile
 
