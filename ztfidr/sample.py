@@ -20,7 +20,7 @@ def get_data( saltmodel="default",
               redshift_source=None,
               redshift_range=[0.015, 0.2],
                  **kwargs):
-    """ Generic dataframe for the ZTF DR2 sample passing the cosmology cuts: 
+    """ Generic dataframe for the ZTF Cosmo DR2 sample.
    
     - good_coverage=True, means minimal sampling (see overview paper)
     - good_lcfit=True, means:
@@ -31,7 +31,7 @@ def get_data( saltmodel="default",
        - c_err_range=[0, 0.1],
        - fitprob > 1e-7
 
-    use **kwargs to change any selection (see sample.get_data()
+    use **kwargs to change any selection (see sample.get_data())
     """
     sample = get_sample(saltmodel=saltmodel)
     
@@ -359,9 +359,9 @@ class Sample():
 
         if good_lcfit is not None:
             if good_lcfit:
-                data = data[data["lcquality_flag"].astype(bool)]
-            else:
-                data = data[~data["lcquality_flag"].astype(bool)]
+                data = data[data["fitquality_flag"].astype(bool)]
+            else: # lcquality_flag
+                data = data[~data["fitquality_flag"].astype(bool)]
                 
         if fitprob is not None:
             data = data[data["fitprob"]>fitprob]
