@@ -46,8 +46,8 @@ def get_data( saltmodel="default",
     # Hubble Residuals    
     data['mag'] = -2.5 * np.log10( data["x0"] ) + 19*_COEFS  - _COSMO.distmod(data["redshift"].values).value
     data["mag_err"] =  +2.5/np.log(10) * data["x0_err"] / data["x0"]
-    data["cov_mag_c"] = 2.5*np.array(data['cov_x0_c'])/(np.log(10)*data['x0'])
-    data["cov_mag_x1"] = 2.5*np.array(data['cov_x0_x1'])/(np.log(10)*data['x0'])
+    data["cov_mag_c"] = -2.5*np.array(data['cov_x0_c'])/(np.log(10)*data['x0'])
+    data["cov_mag_x1"] = -2.5*np.array(data['cov_x0_x1'])/(np.log(10)*data['x0'])
     
     # Environmental data
     localmags = io.get_localhost_mag()
