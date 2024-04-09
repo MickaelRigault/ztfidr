@@ -19,6 +19,7 @@ def get_data( saltmodel="default",
               good_lcfit = True,
               redshift_source=None,
               redshift_range=None,
+              get_envprop = True,
                  **kwargs):
     """ Generic dataframe for the ZTF Cosmo DR2 sample.
    
@@ -33,6 +34,7 @@ def get_data( saltmodel="default",
 
     use **kwargs to change any selection (see sample.get_data())
     """
+    from .hostmass import get_taylor_hostmass
     sample = get_sample(saltmodel=saltmodel)
     
     prop = { **dict(good_coverage=good_coverage,
@@ -50,26 +52,34 @@ def get_data( saltmodel="default",
     data["cov_mag_x1"] = -2.5*np.array(data['cov_x0_x1'])/(np.log(10)*data['x0'])
     
     # Environmental data
-    localmags = io.get_localhost_mag()
-    globaldata = io.get_globalhost_data()
-    globalmags = io.get_globalhost_mag()
-    globaldata["mass_err"] = globaldata["mass_err"]/2.
-    
-    localmags["localcolor"] = localmags["PS1g"] - localmags["PS1z"]
-    localmags["localcolor_err"] = np.sqrt(localmags["PS1g_err"]**2 + localmags["PS1z_err"]**2)
-    
-    #localmags["mass"] = localmags["PS1g"] - localmags["PS1z"]
-    data = data.join(localmags[["localcolor","localcolor_err"]].loc[data.index])
-    data = data.join(globaldata[["mass","mass_err"]].loc[data.index])
-    data = data.join(globalmags[["PS1r"]].loc[data.index])
-    ## Standardisation parameters
+    if get_envprop:
+        localmags = io.get_localhost_mag()
+        globalmags = io.get_globalhost_mag().join(data[["redshift"]])
 
-    lcolor_cut = 1
-    data["h_lowcolor"] = stats.norm.cdf(lcolor_cut, loc=data["localcolor"], scale=data["localcolor_err"])
-    data["h_lowcolor_err"] = 1e-3
+        # get the host masses using Taylor's relation
+        host_info = globalmags[["PS1i","PS1g","PS1i_err","PS1g_err", "redshift"]].dropna()
+        mass, mass_err = get_taylor_hostmass(magi = host_info["PS1i"], magg = host_info["PS1g"],
+                                         magi_err = host_info["PS1i_err"], magg_err = host_info["PS1g_err"],
+                                         redshift=host_info["redshift"], use_prior=True)
+        masses = mass.to_frame("mass").join(mass_err.to_frame("mass_err")).reindex(data.index)
+
+        # get the color colors
+        localmags["localcolor"] = localmags["PS1g"] - localmags["PS1z"]
+        localmags["localcolor_err"] = np.sqrt(localmags["PS1g_err"]**2 + localmags["PS1z_err"]**2)
+
     
-    data["h_lowmass"] = stats.norm.cdf(10, loc=data["mass"], scale=data["mass_err"])
-    data["h_lowmass_err"] = 1e-3
+        #localmags["mass"] = localmags["PS1g"] - localmags["PS1z"]
+        data = data.join(localmags[["localcolor","localcolor_err"]].loc[data.index])
+        data = data.join(masses[["mass","mass_err"]].loc[data.index])
+        data = data.join(globalmags[["PS1r"]].loc[data.index])
+        
+        ## Standardisation parameters
+        lcolor_cut = 1
+        data["h_lowcolor"] = stats.norm.cdf(lcolor_cut, loc=data["localcolor"], scale=data["localcolor_err"])
+        data["h_lowcolor_err"] = 1e-3
+    
+        data["h_lowmass"] = stats.norm.cdf(10, loc=data["mass"], scale=data["mass_err"])
+        data["h_lowmass_err"] = 1e-3
 
     return data.copy()
 
