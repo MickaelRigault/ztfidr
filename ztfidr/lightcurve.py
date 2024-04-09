@@ -194,7 +194,7 @@ class LightCurve( object ):
         detection = flux/error
             
         
-        lcdata = data[["mjd","mag","mag_err","filter","field_id","x_pos","y_pos", "flag"]]
+        lcdata = data[["mjd","mag","mag_err","filter","field_id","x_pos","y_pos", "flag", "rcid"]]
         additional = pandas.DataFrame(np.asarray([zp, flux, error, detection]).T,
                                          columns=["zp", "flux", "error", "detection"],
                                          index=lcdata.index)
@@ -254,7 +254,7 @@ class LightCurve( object ):
         -------
         DataFrame
         """
-        basedata = self.get_lcdata(**kwargs)[["mjd","flux", "error","phase", "filter","flag"]].copy()
+        basedata = self.get_lcdata(**kwargs)[["mjd","flux", "error","phase", "filter","flag", "field_id", "x_pos", "y_pos", "rcid"]].copy()
         if model is None:
             model = self.get_saltmodel(which)
 

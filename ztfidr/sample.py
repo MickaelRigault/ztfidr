@@ -236,10 +236,8 @@ class Sample():
     # ------- #
     def get_data(self,
                      good_coverage=None,
-                     good_lcfit=None,                     
-                     
-                     clean_t0nan=True,
-                     
+                     good_lcfit=None,
+                     clean_t0nan=True,                     
                      t0_range=None, x1_range=None, c_range=None,
                      redshift_range=None,
                      redshift_source=None,
@@ -247,7 +245,6 @@ class Sample():
                      exclude_targets=None, in_targetlist=None,
                      ndetections=None,
                      fitprob=None,
-                     
                      classification=None,
                      first_spec_phase=None, query=None, data=None):
         """ 
@@ -375,7 +372,19 @@ class Sample():
         # Additional Query
         if query:
             data = data.query(query)
-            
+
+
+        bitmask = np.zeros(len(data))
+        for i, (value, range) in enumerate( [["x1", [-3,3]], #2**0
+                                     ["c", [-0.2, 0.8]],#2**1
+                                     ["t0_err", [0, 1]],#2**2
+                                     ["x1_err", [0, 1]],#2**3
+                                     ["c_err", [0, 0.1]],#2**4
+                                     ["fitprob", [1e-7, 10]]]):#2**5
+            flag_in = data[value].between(*range).values
+            bitmask[~flag_in] += 2**i
+        data["fitquality_bitmask"] = np.asarray(bitmask, dtype=int)
+    
         return data
 
     def get_phases(self, one_per_day=False,
@@ -448,7 +457,7 @@ class Sample():
         from . import lightcurve
         return lightcurve.LightCurve.from_name(name, saltparam=self.data.loc[name], saltmodel=self._saltmodel)
 
-    def get_target_lightcurve_residual(self, name, phase_range=None, mjd_range=None, **kwargs):
+    def get_target_lightcurve_residual(self, name, phase_range=None, restphase=False, mjd_range=None, **kwargs):
         """ fet the {name} lightcurve residuals given the target's salt model. 
         
         Parameters
@@ -466,6 +475,9 @@ class Sample():
         pandas.DataFrame
         """
         from . import lightcurve
+        if phase_range is not None and restphase:
+            phase_range = np.asarray(phase_range)/(1+self.data.loc[name]["redshift"])
+        
         return lightcurve.get_target_lcresiduals(name, phase_range,
                                                      mjd_range=mjd_range,
                                                      saltparam=self.data.loc[name],
@@ -781,6 +793,14 @@ class Sample():
         
         return self._phase_df
 
+    @property
+    def phase_coverage(self):
+        """ """
+        if not hasattr(self, "_phasecoverage"):
+            self._phasecoverage = self.get_phase_coverage() # default
+            
+        return self._phasecoverage
+    
     @property
     def spectra_df(self):
         """ dataframe containing the spectral information """

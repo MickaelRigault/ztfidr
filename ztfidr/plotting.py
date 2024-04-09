@@ -232,7 +232,7 @@ def show_residual(data, key="pull", ax=None, axh=None, axc=None,
                   main_color="C0", cmap_significance="GnBu_r",
                   incl_lef=True, incl_runningpull=False,
                   pull_color=None,
-                  blw=0.1, bs=8, #="w",
+                  blw=0.1, bs=8, bec="k",
                   **kwargs):
     """ """
     from matplotlib.colors import to_rgba
@@ -395,7 +395,7 @@ def show_lc_residuals(data, fig=None, axes=None,
 
     # -- plotting -- #
 
-    prop = {**dict(binstat=binstat, bs=20, blw=0.2, incl_lef=incl_lef, 
+    prop = {**dict(binstat=binstat, bs=20, blw=0.2, incl_lef=incl_lef,
                cmap_significance=cmap_significance, key=key,
                        incl_runningpull=incl_runningpull), **kwargs}
 

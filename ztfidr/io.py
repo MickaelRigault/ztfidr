@@ -258,14 +258,14 @@ def get_localhost_data(load=True, **kwargs):
 def get_globalhost_mag():
     """ """
     filepath = os.path.join(IDR_PATH, "tables",
-                            ".dataset_creation/host_prop/host_photometry/ztfdr2_global_imcat_mag.csv")
+                            ".dataset_creation/host_prop/host_photometry/ztfdr2_valid_hostphot_mag.csv")
     return pandas.read_csv(filepath, index_col=0)
     
 
 def get_localhost_mag():
     """ """
     filepath = os.path.join(IDR_PATH, "tables",
-                            ".dataset_creation/host_prop/host_photometry/ztfdr2_local2_imcat_mag.csv")
+                            ".dataset_creation/host_prop/host_photometry/ztfdr2_local2_hostphot_mag.csv")
     return pandas.read_csv(filepath, index_col=0)
     
 # ================== #
@@ -285,6 +285,15 @@ def get_target_lightcurve(target, test_exist=True, load=True):
         return fullpath
     
     return pandas.read_csv(fullpath,  delim_whitespace=True, comment='#')
+
+
+def get_target_lightcurve_baseline(target):
+    """ """
+    filepath = get_target_lightcurve(target, load=False)
+    lcinfo = open(filepath, "r").read().splitlines()
+    i_struct = [i for i, line in enumerate(lcinfo) if line.startswith("# ------")]
+    cols, *data = [l.replace("#","").split() for l in lcinfo[i_struct[1]+2: i_struct[2]]]
+    return pandas.DataFrame(data=data, columns=cols)
 
 
 def get_phase_coverage(load=True, warn=True, **kwargs):
