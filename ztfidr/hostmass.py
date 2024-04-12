@@ -64,3 +64,4 @@ def gi_prior_pdf(mur=1.25, mub=0.85, sigmar=0.1, sigmab=0.3, b_coef=0.9,
     pdf_b = stats.norm.pdf(xx, loc=mub, scale=sigmab)
     pdf_r = stats.norm.pdf(xx, loc=mur, scale=sigmar)
     return xx, pdf_b * b_coef + pdf_r * (1-b_coef)
+

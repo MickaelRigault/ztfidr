@@ -19,7 +19,7 @@ def get_data( saltmodel="default",
               good_lcfit = True,
               redshift_source=None,
               redshift_range=None,
-              get_envprop = True,
+              get_envprop = True, corr_mw=True,
                  **kwargs):
     """ Generic dataframe for the ZTF Cosmo DR2 sample.
    
@@ -56,6 +56,14 @@ def get_data( saltmodel="default",
         localmags = io.get_localhost_mag()
         globalmags = io.get_globalhost_mag().join(data[["redshift"]])
 
+        if corr_mw:
+            from .mw import correct_mwextinction_on_hostmag
+            localmags = localmags.join(data["mwebv"])
+            globalmags = globalmags.join(data["mwebv"])
+            # apply the correction
+            localmags = correct_mwextinction_on_hostmag(localmags)
+            globalmags = correct_mwextinction_on_hostmag(globalmags)
+            
         # get the host masses using Taylor's relation
         host_info = globalmags[["PS1i","PS1g","PS1i_err","PS1g_err", "redshift"]].dropna()
         mass, mass_err = get_taylor_hostmass(magi = host_info["PS1i"], magg = host_info["PS1g"],
@@ -109,7 +117,8 @@ class Sample():
         self._saltmodel = saltmodel
         
     @classmethod
-    def load(cls, redshift_range=None, target_list=None, has_spectra=True, saltmodel="default", **kwargs):
+    def load(cls, redshift_range=None, target_list=None, has_spectra=True,
+                 saltmodel="default", **kwargs):
         """ Load a Sample instance building it from io.get_targets_data() """
         data, saltmodel = io.get_targets_data(saltmodel=saltmodel, **kwargs)
         
