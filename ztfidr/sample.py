@@ -45,9 +45,12 @@ def get_data( saltmodel="default",
     
     data = sample.get_data(**prop)
     
-    # Hubble Residuals    
-    data['mag'] = -2.5 * np.log10( data["x0"] ) + 19*_COEFS  - _COSMO.distmod(data["redshift"].values).value
-    data["mag_err"] =  +2.5/np.log(10) * data["x0_err"] / data["x0"]
+    # Hubble Residuals
+    data['mb'] = -2.5 * np.log10( data["x0"] ) + 19*_COEFS
+    data["mb_err"] =  +2.5/np.log(10) * data["x0_err"] / data["x0"]
+    
+    data['magres'] = data['mb'] - _COSMO.distmod(data["redshift"].values).value
+    data["magres_err"] =  data["mb_err"].copy()
     data["cov_mag_c"] = -2.5*np.array(data['cov_x0_c'])/(np.log(10)*data['x0'])
     data["cov_mag_x1"] = -2.5*np.array(data['cov_x0_x1'])/(np.log(10)*data['x0'])
     
@@ -469,13 +472,17 @@ class Sample():
         propmodel = self.data.loc[name].rename({"redshift":"z"})[["z","t0","x0","x1","c","mwebv"]].to_dict()
         return get_saltmodel(which=self._saltmodel, **propmodel)
         
-        
     # LightCurve
     def get_target_lightcurve(self, name, **kwargs):
         """ Get the {name} LightCurve object """
         from . import lightcurve
         return lightcurve.LightCurve.from_name(name, saltparam=self.data.loc[name], saltmodel=self._saltmodel)
 
+    def get_target_lightcurve_data(self, name,  phase_range=None, mjd_range=None, **kwargs):
+        """ Get the {name} LightCurve object """
+        from . import lightcurve
+        return lightcurve.get_target_lcdata(name, saltparam=self.data.loc[name],  phase_range=None, mjd_range=None, **kwargs)
+    
     def get_target_lightcurve_residual(self, name, phase_range=None, restphase=False, mjd_range=None, **kwargs):
         """ fet the {name} lightcurve residuals given the target's salt model. 
         

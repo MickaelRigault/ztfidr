@@ -22,9 +22,21 @@ BAD_ZTFCOLOR = { # ZTF
 }
 
 
-def get_target_lightcurve(name, saltparam=None, **kwargs):
+def get_target_lcdata(name, phase_range=None, mjd_range=None, saltparam=None, **kwargs):
     """ load the lightcurve object for the given target. """
-    return LightCurve.from_name(name, saltparam=saltparam, **kwargs)
+    lc = LightCurve.from_name(name, saltparam=saltparam, **kwargs)
+    data = lc.get_lcdata(**kwargs)[["mjd", "flux", "error", "phase", "filter", "flag", "field_id", "x_pos", "y_pos", "rcid"]].copy()
+    # phase means restframe, so old phase renamed phase_obsframe
+    data["phase_obsframe"] = data["phase"].copy()
+    data["phase"] = data["phase_obsframe"]/(1+saltparam["redshift"])
+    
+    if phase_range is not None:
+        data = data[data["phase_restframe"].between(*phase_range)]
+
+    if mjd_range is not None:
+        data = data[data["mjd"].between(*mjd_range)]
+
+    return data
 
 
 def get_target_lcresiduals(name, phase_range=None, mjd_range=None, saltparam=None,

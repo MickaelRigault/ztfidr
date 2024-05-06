@@ -151,7 +151,7 @@ def get_redshif_data(load=True, index_col=0, full=False, **kwargs):
     
     # Host-Z
     hostz = pandas.read_csv(os.path.join(redshift_dir,
-                                                    "ztfdr2_galcat_redshifts.csv"),
+                                                    "ztfdr2_hostphot_redshifts.csv"),
                                      index_col=0)
     hostz = hostz[["z"]]
     hostz.columns = ["gal"]
