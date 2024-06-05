@@ -25,7 +25,7 @@ BAD_ZTFCOLOR = { # ZTF
 def get_target_lcdata(name, phase_range=None, mjd_range=None, saltparam=None, **kwargs):
     """ load the lightcurve object for the given target. """
     lc = LightCurve.from_name(name, saltparam=saltparam, **kwargs)
-    data = lc.get_lcdata(**kwargs)[["mjd", "flux", "error", "phase", "filter", "flag", "field_id", "x_pos", "y_pos", "rcid"]].copy()
+    data = lc.get_lcdata(**kwargs)[["mjd", "flux", "error", "phase", "filter", "flag", "field_id",  "rcid"]].copy() # "x_pos", "y_pos",
     # phase means restframe, so old phase renamed phase_obsframe
     data["phase_obsframe"] = data["phase"].copy()
     data["phase"] = data["phase_obsframe"]/(1+saltparam["redshift"])
@@ -206,7 +206,7 @@ class LightCurve( object ):
         detection = flux/error
             
         
-        lcdata = data[["mjd","mag","mag_err","filter","field_id","x_pos","y_pos", "flag", "rcid"]]
+        lcdata = data[["mjd","mag","mag_err","filter","field_id", "flag", "rcid"]] # "x_pos","y_pos"
         additional = pandas.DataFrame(np.asarray([zp, flux, error, detection]).T,
                                          columns=["zp", "flux", "error", "detection"],
                                          index=lcdata.index)
@@ -266,7 +266,7 @@ class LightCurve( object ):
         -------
         DataFrame
         """
-        basedata = self.get_lcdata(**kwargs)[["mjd","flux", "error","phase", "filter","flag", "field_id", "x_pos", "y_pos", "rcid"]].copy()
+        basedata = self.get_lcdata(**kwargs)[["mjd","flux", "error","phase", "filter","flag", "field_id", "rcid"]].copy() # "x_pos", "y_pos",
         if model is None:
             model = self.get_saltmodel(which)
 
@@ -351,7 +351,8 @@ class LightCurve( object ):
     # --------- #
     #  PLOTTER  #
     # --------- #
-    def show(self, ax=None, figsize=None, zp=None, formattime=True, zeroline=True,
+    def show(self, ax=None, figsize=None, zp=None, bands="*",
+                 formattime=True, zeroline=True,
                  incl_salt=True, which_model=None, autoscale_salt=True, clear_yticks=True,
                  phase_range=[-30,100], as_phase=False, t0=None, 
                  zprop={}, inmag=False, ulength=0.1, ualpha=0.1, notplt=False,
@@ -389,11 +390,16 @@ class LightCurve( object ):
                 timerange = [t0+phase_range[0], t0+phase_range[1]]
             else:
                 timerange = None
+                
             modeltime = t0 + np.linspace(-15,50,100)
         else:
             timerange = None
             if incl_salt:
                 warnings.warn("t0 in saltparam is NaN, cannot show the model")
+            if as_phase:
+                warnings.warn("t0 in saltparam is NaN, as_phase not available")
+                as_phase = False
+                
             incl_salt = False
             saltmodel = None
             autoscale_salt = False
@@ -403,7 +409,10 @@ class LightCurve( object ):
         else:
             prop = {}
         lightcurves = self.get_lcdata(zp=zp, in_mjdrange=timerange, **prop)
-        bands = np.unique(lightcurves["filter"])
+        if bands is None or bands in ["*", "all"]:
+            bands = np.unique(lightcurves["filter"])
+        else:
+            bands = np.atleast_1d(bands)
         
 
         max_saltlc = 0
@@ -422,7 +431,11 @@ class LightCurve( object ):
             # IN FLUX
             if not inmag:
                 # - Data
-                datatime = Time(bdata["mjd"].astype(float), format="mjd").datetime
+                if as_phase:
+                    datatime = bdata["mjd"].astype("float") - t0
+                else:
+                    datatime = Time(bdata["mjd"].astype("float"), format="mjd").datetime
+                    
                 y, dy = bdata["flux"], bdata["error"]
                 # - Salt
                 if saltmodel is not None:
@@ -437,7 +450,11 @@ class LightCurve( object ):
                 # - Data                
                 bdata = bdata[flag_det]
                 #flag_good_ = flag_good_[flag_det]
-                datatime = Time(bdata["mjd"], format="mjd").datetime
+                if as_phase:
+                    datatime = bdata["mjd"].astype("float") - t0
+                else:
+                    datatime = Time(bdata["mjd"], format="mjd").datetime
+                    
                 y, dy = bdata["mag"], bdata["mag_err"]
                 # - Salt
                 if saltmodel is not None:
@@ -461,7 +478,12 @@ class LightCurve( object ):
                             )
         
             if saltdata is not None:
-                ax.plot(Time(modeltime, format="mjd").datetime,
+                if as_phase:
+                    modeltime = modeltime - t0
+                else:
+                    modeltime = Time(modeltime, format="mjd").datetime
+                    
+                ax.plot(modeltime,
                         saltdata,
                         color=ZTFCOLOR[band_]["mfc"], zorder=5)
 
@@ -472,14 +494,18 @@ class LightCurve( object ):
             ax.invert_yaxis()
             for band_ in bands:
                 bdata = lightcurves[(lightcurves["filter"]==band_) & (lightcurves["mag"]>=99)]
-                datatime = Time(bdata["mjd"], format="mjd").datetime
+                if as_phase:
+                    datatime = Time(bdata["mjd"], format="mjd").datetime
+                else:
+                    datatime = bdata["mjd"].astype("float") - t0
+                    
                 y = bdata["mag_lim"]
                 ax.errorbar(datatime, y,
                                  yerr=ulength, lolims=True, alpha=ualpha,
                                  color=ZTFCOLOR[band_]["mfc"], 
                                  ls="None",  label="_no_legend_")
                                  
-        if formattime:
+        if formattime and not as_phase:
             locator = mdates.AutoDateLocator()
             formatter = mdates.ConciseDateFormatter(locator)
             ax.xaxis.set_major_locator(locator)
@@ -499,7 +525,11 @@ class LightCurve( object ):
             
         if autoscale_salt:
             if timerange is not None:
-                ax.set_xlim(*Time(timerange,format="mjd").datetime)
+                if as_phase:
+                    ax.set_xlim(*(np.asarray(timerange)-t0))
+                else:
+                    ax.set_xlim(*Time(timerange,format="mjd").datetime)
+                    
             if not inmag:
                 ax.set_ylim(bottom=-max_saltlc*0.25)
                 ax.set_ylim(top=max_saltlc*1.25)

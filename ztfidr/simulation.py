@@ -3,16 +3,17 @@ from scipy import stats
 
 noise_model = {
     # SALT paramerers
-    "x1": { "func": stats.alpha.rvs,
-            "kwargs": {"a":3.46e+00, "loc":-1.35e-01, "scale":9.81e-01}
-          },
+    "x1": { "func": stats.beta.rvs,
+            "kwargs": {"a":1.78, "b":793.7, "loc":0.03, "scale":66.4}
+          }, 
     "c": { "func": stats.alpha.rvs,
             "kwargs": {"a":3.27e+00, "loc":1.71e-02, "scale":5.03e-02}
           },
 
     # derived
-    "magobs": { "func": stats.alpha.rvs,
-            "kwargs": { "a":2.45e+00, "loc":2.54e-02, "scale":3.18e-02}
+
+    "magobs": { "func": stats.beta.rvs,
+            "kwargs": { "a":3., "b":600., "loc":0.03 , "scale":2.}
             },
     # Environments
     "mass": { "func": stats.alpha.rvs,

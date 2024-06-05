@@ -256,6 +256,11 @@ class Sample():
     # ------- #
     # GETTER  #
     # ------- #
+    def get_sncosmo_source(self):
+        """ """
+        from .lightcurve import get_saltmodel
+        return get_saltmodel(self._saltmodel).source
+
     def get_data(self,
                      good_coverage=None,
                      good_lcfit=None,
