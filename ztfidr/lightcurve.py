@@ -479,11 +479,11 @@ class LightCurve( object ):
         
             if saltdata is not None:
                 if as_phase:
-                    modeltime = modeltime - t0
+                    modeltime_ = modeltime - t0
                 else:
-                    modeltime = Time(modeltime, format="mjd").datetime
+                    modeltime_ = Time(modeltime, format="mjd").datetime
                     
-                ax.plot(modeltime,
+                ax.plot(modeltime_,
                         saltdata,
                         color=ZTFCOLOR[band_]["mfc"], zorder=5)
 
